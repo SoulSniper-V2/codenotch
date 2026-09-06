@@ -38,6 +38,11 @@ We borrowed heavily from both repositories, refined the implementations, and bro
 | **OpenRouter** | `OPENROUTER_API_KEY` / Keychain | Credit balance, key spending limits, daily usage figures |
 | **DeepSeek** | `DEEPSEEK_API_KEY` / Keychain | Total balance, granted balance, topped-up balance |
 | **OpenAI Platform** | `OPENAI_API_KEY` / Keychain | Credit grants, expiration dates, available balance |
+| **Windsurf** | Editor local SQLite state store | Daily and weekly quota percentages, reset deadlines, message limits |
+| **Ollama** | Local engine API (`127.0.0.1:11434`) | Active running model, VRAM memory footprint, installed model catalog |
+| **Groq** | `GROQ_API_KEY` / Keychain | Requests per minute, tokens per minute, LPU inference status |
+| **Mistral / Codestral** | `MISTRAL_API_KEY` / Keychain | Codestral code completion availability, model catalog status |
+| **Perplexity** | `PERPLEXITY_API_KEY` / Session Cookie | Pro searches, research queries, and free query limits |
 
 ---
 

@@ -14,6 +14,11 @@ enum ProviderGlyph: String, Codable, Equatable {
     case copilot
     case openrouter
     case deepseek
+    case windsurf
+    case ollama
+    case groq
+    case mistral
+    case perplexity
 
     /// If an asset with this name is in the bundle it wins over the traced
     /// outline — drop a PDF/SVG export from Figma in and it is picked up.
@@ -41,6 +46,11 @@ enum ProviderGlyph: String, Codable, Equatable {
         case .copilot: return 1.0
         case .openrouter: return 0.98
         case .deepseek: return 1.0
+        case .windsurf: return 0.98
+        case .ollama: return 1.0
+        case .groq: return 0.98
+        case .mistral: return 0.98
+        case .perplexity: return 0.98
         }
     }
 
@@ -55,6 +65,8 @@ enum ProviderGlyph: String, Codable, Equatable {
         case .copilot: return GlyphOutline.copilot
         case .openrouter: return GlyphOutline.openrouter
         case .deepseek: return GlyphOutline.deepseek
+        case .windsurf, .ollama, .groq, .mistral, .perplexity:
+            return GlyphOutline.third
         }
     }
 }

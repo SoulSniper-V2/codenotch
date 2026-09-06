@@ -67,7 +67,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             CodexLocalProvider(), AntigravityProvider(),
                             GrokProvider(), CopilotProvider(),
                             OpenRouterProvider(), DeepSeekProvider(),
-                            OpenAIProvider()]
+                            OpenAIProvider(), WindsurfProvider(),
+                            OllamaProvider(), GroqProvider(),
+                            MistralProvider(), PerplexityProvider()]
                     + webProviders,
                 disconnected: preferences.disconnectedProviders
             )
