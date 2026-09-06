@@ -304,10 +304,11 @@ final class CodexDesktopActivityTests: XCTestCase {
                 source_updated_at REAL NOT NULL, source_kind TEXT);
             """, nil, nil, nil)
         for (at, title) in rows {
+            let escapedTitle = title.replacingOccurrences(of: "'", with: "''")
             sqlite3_exec(db, """
                 INSERT INTO local_thread_catalog
                 (thread_id, display_title, source_updated_at, source_kind)
-                VALUES ('t', '\(title)', \(at), 'chatgpt');
+                VALUES ('t', '\(escapedTitle)', \(at), 'chatgpt');
                 """, nil, nil, nil)
         }
         return url
@@ -453,4 +454,3 @@ final class UsageBlockTests: XCTestCase {
         )
     }
 }
-
