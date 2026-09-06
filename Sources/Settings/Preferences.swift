@@ -3,6 +3,26 @@ import Foundation
 import ServiceManagement
 import os
 
+/// How metrics are presented on provider rings and cells: used vs. remaining.
+enum MetricDisplayMode: String, CaseIterable, Identifiable {
+    case remaining
+    case used
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .remaining: return "% Remaining"
+        case .used: return "% Used"
+        }
+    }
+    var explanation: String {
+        switch self {
+        case .remaining: return "Rings show quota left to spend before the window resets."
+        case .used: return "Rings show quota consumed within the current window."
+        }
+    }
+}
+
 /// What the user has chosen, kept in `UserDefaults`.
 @MainActor
 final class Preferences: ObservableObject {
@@ -29,6 +49,11 @@ final class Preferences: ObservableObject {
     /// Where the app itself shows up: Dock, menu bar, or nowhere.
     @Published var appPresence: AppPresence {
         didSet { defaults.set(appPresence.rawValue, forKey: Keys.presence) }
+    }
+
+    /// Which way rings and percentages are drawn: remaining or used.
+    @Published var metricStyle: MetricDisplayMode {
+        didSet { defaults.set(metricStyle.rawValue, forKey: Keys.metricStyle) }
     }
 
     /// The version whose changes have already been shown.
@@ -60,6 +85,7 @@ final class Preferences: ObservableObject {
         static let presence = "appPresence"
         static let edge = "notchEdge"
         static let lastSeenVersion = "lastSeenVersion"
+        static let metricStyle = "metricDisplayMode"
     }
 
     /// True the very first time this copy runs, and never again.
@@ -77,7 +103,7 @@ final class Preferences: ObservableObject {
     /// the notch's mode, the archived readings, all apparently lost. Copying
     /// the old domain across once is the difference between a rename and what
     /// looks like a reset.
-    private static let previousDomain = "com.vinz.usagenotch"
+    nonisolated private static let previousDomain = "com.vinz.usagenotch"
 
     static func migrateFromPreviousName(into defaults: UserDefaults = .standard,
                                         from domain: String = previousDomain) {
@@ -119,6 +145,8 @@ final class Preferences: ObservableObject {
         // Read from the system rather than from our own store: the user can turn
         // this off in System Settings, and a remembered `true` would then be a lie.
         self.launchAtLogin = Self.isRegisteredForLogin
+        self.metricStyle = defaults.string(forKey: Keys.metricStyle)
+            .flatMap(MetricDisplayMode.init(rawValue:)) ?? .used
     }
 
     func isConnected(_ providerID: String) -> Bool {
@@ -141,10 +169,10 @@ final class Preferences: ObservableObject {
     /// Nothing but the app itself can clean that up, so the app has to offer it.
     ///
     /// Not tied to uninstalling: a reinstall is indistinguishable from an
-    /// update, and wiping data on every Sparkle update would be catastrophic.
+    /// update, and wiping data on every app update would be catastrophic.
     /// It has to be something the user asks for.
     static func eraseAllData() {
-        let bundleID = Bundle.main.bundleIdentifier ?? "com.vinz.codenotch"
+        let bundleID = Bundle.main.bundleIdentifier ?? "com.soulsniper.codenotch"
         UserDefaults.standard.removePersistentDomain(forName: bundleID)
         UserDefaults.standard.synchronize()
 

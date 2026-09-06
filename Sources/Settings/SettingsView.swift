@@ -5,6 +5,9 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var preferences: Preferences
     let providers: () -> [ProviderSummary]
+    /// The marketing version, for the footer. Passed in rather than read from
+    /// the bundle here so tests can pin it.
+    let version: String
     /// Re-read whenever the sheet comes forward. Switching account happens in
     /// another app, so the user is always coming *back* here to see it — which
     /// makes returning focus the exact moment the old value is wrong.
@@ -19,7 +22,31 @@ struct SettingsView: View {
     /// Re-reads a provider's credential. For a declined keychain prompt that is
     /// the whole remedy: asking again is what puts the prompt back on screen.
     let retry: (String) -> Void
-    @ObservedObject var updater: Updater
+    /// Keeps explicit refresh in the store instead of making this window own
+    /// provider fetching. This is the same useful boundary CodexBar uses.
+    let refreshAll: () -> Void
+    /// Forces the local Claude Code/Codex token ledger to rescan its sources.
+    let refreshLedger: () -> Void
+
+    init(preferences: Preferences,
+         providers: @escaping () -> [ProviderSummary],
+         version: String,
+         signOut: @escaping (String) -> Void,
+         signIn: @escaping (String) -> Bool,
+         switchAccount: @escaping (String) -> Bool,
+         retry: @escaping (String) -> Void,
+         refreshAll: @escaping () -> Void = {},
+         refreshLedger: @escaping () -> Void = {}) {
+        self.preferences = preferences
+        self.providers = providers
+        self.version = version
+        self.signOut = signOut
+        self.signIn = signIn
+        self.switchAccount = switchAccount
+        self.retry = retry
+        self.refreshAll = refreshAll
+        self.refreshLedger = refreshLedger
+    }
 
     var body: some View {
         // One page of grouped sections rather than tabs. Tabs hid three
@@ -29,7 +56,11 @@ struct SettingsView: View {
         // uses for this: each section is a titled, rounded group, so the
         // structure is visible all at once instead of navigated to.
         Form {
-            Section("Integrations") {
+            Section {
+                SettingsHeader(accounts: accounts, version: version)
+            }
+
+            Section {
                 if needsSetup { setupNote }
                 ForEach(accounts) {
                     AccountRow(provider: $0, preferences: preferences,
@@ -47,6 +78,8 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Text("Integrations")
             }
 
             // One section, because they are one question: what Codenotch
@@ -87,9 +120,33 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            // Startup and updates together: both are about what Codenotch does
-            // without being asked, and one switch under its own header looked
-            // like an oversight rather than a section.
+            Section("Usage") {
+                Picker("Ring metric", selection: $preferences.metricStyle) {
+                    ForEach(MetricDisplayMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Text(preferences.metricStyle.explanation)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Label("Local usage estimates", systemImage: "chart.bar.xaxis")
+                    .font(.callout)
+
+                Text("Codenotch scans local Claude Code and Codex logs whenever "
+                     + "Settings opens. Estimates "
+                     + "are shown in each provider's details and never replace the "
+                     + "vendor's quota reading.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // App lifecycle and version together: both describe this copy of
+            // Codenotch rather than what it is reading.
             Section("General") {
                 Toggle("Open Codenotch at login", isOn: $preferences.launchAtLogin)
                 if let problem = preferences.launchAtLoginProblem {
@@ -99,83 +156,42 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Toggle("Install updates automatically", isOn: Binding(
-                    get: { updater.automatic },
-                    set: { updater.automatic = $0 }
-                ))
+                Text("Version \(version).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    // Disclosed rather than merely silent. An app that updates
-                    // itself unprompted *and* reads other apps' credentials is
-                    // exactly the shape security tooling flags; saying so, with
-                    // a way to switch it off, is the difference between a
-                    // background updater and something that looks like it is
-                    // hiding.
-                    Text("Version \(updater.currentVersion). Updates install in the "
-                         + "background and apply next time Codenotch starts.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                    Button("Check now") { updater.checkNow() }
-                        .controlSize(.small)
-                }
-
-                // Says what happened, where the user is already looking.
-                // Sparkle's own answer to a failed check is a modal reading
-                // "an error occurred in retrieving update information", which
-                // names no cause and offers nothing to do about it.
-                if let message = updater.outcome.message {
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(
-                            updater.outcome == .unreachable ? .orange : .secondary
-                        )
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                Label("Private by design — no telemetry or update feed.",
+                      systemImage: "lock.shield")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
         }
         .formStyle(.grouped)
-        // Outside the form, so it stays put at the foot of the window rather
-        // than scrolling away below the last section — a credit that has to be
-        // hunted for is not really a credit.
-        .safeAreaInset(edge: .bottom, spacing: 0) { credit }
+        .toggleStyle(.switch)
+        .scrollContentBackground(.hidden)
+        .background(.regularMaterial)
         .frame(width: SettingsView.width, height: SettingsView.height)
-        .onAppear { accounts = providers() }
+        .onAppear { refreshForPresentation() }
         .onReceive(NotificationCenter.default.publisher(
             for: NSWindow.didBecomeKeyNotification
+        )) { _ in refreshForPresentation() }
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSNotification.Name("CodenotchRefreshProvider")
         )) { _ in accounts = providers() }
     }
 
-    private var credit: some View {
-        VStack(spacing: 0) {
-            Divider()
-            HStack(spacing: 4) {
-                Text("App designed and developed by")
-                // Only the handle is the link, so the line reads as a sentence
-                // rather than as a button with a sentence attached.
-                Link("@hivinz_", destination: SettingsView.authorURL)
-                    // A link that does not change the pointer reads as text.
-                    .onHover { inside in
-                        if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
-                    }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity)
-        }
-        .background(.ultraThinMaterial)
+    private func refreshForPresentation() {
+        accounts = providers()
+        refreshAll()
+        refreshLedger()
     }
 
-    static let authorURL = URL(string: "https://x.com/hivinz_")!
-
-    /// Narrower than the tabbed version needed: without a row of tab titles to
-    /// fit, the width is set by the account rows alone.
-    static let width: CGFloat = 500
-    /// Tall enough that Startup and Updates are visible without scrolling —
-    /// four account rows push everything below them a long way down.
-    static let height: CGFloat = 560
+    /// Wide enough for provider rows and short explanations without making the
+    /// settings page feel like a dashboard.
+    static let width: CGFloat = 520
+    /// Keeps the common controls visible while allowing the grouped form to
+    /// scroll naturally when more providers are enabled.
+    static let height: CGFloat = 650
 
     /// Nothing to read from anywhere. On a first launch that is the normal
     /// state, and it is the only moment the sheet has something to explain.
@@ -228,6 +244,63 @@ struct SettingsView: View {
     }
 
 
+}
+
+/// A compact identity strip gives the settings window a home without turning
+/// the page into a marketing hero. The connected count is the same account
+/// state shown by the rows below, so it remains useful while scrolling.
+private struct SettingsHeader: View {
+    let accounts: [ProviderSummary]
+    let version: String
+
+    private var connectedCount: Int {
+        accounts.filter { $0.account != nil }.count
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            if let icon = NSApplication.shared.applicationIconImage {
+                Image(nsImage: icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .frame(width: 42, height: 42)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .accessibilityHidden(true)
+            } else {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.system(size: 24, weight: .semibold))
+                    .frame(width: 42, height: 42)
+                    .background(.thinMaterial, in: RoundedRectangle(
+                        cornerRadius: 10, style: .continuous))
+                    .accessibilityHidden(true)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Codenotch")
+                    .font(.title3.weight(.semibold))
+                Text("Your assistants, at the edge of the screen")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 12)
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(accounts.isEmpty ? "—" : "\(connectedCount)/\(accounts.count)")
+                    .font(.headline.monospacedDigit())
+                Text("connected · v\(version)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            accounts.isEmpty
+                ? "Codenotch settings, loading integrations"
+                : "Codenotch settings, \(connectedCount) of \(accounts.count) integrations connected"
+        )
+    }
 }
 
 /// One provider: whether Codenotch reads it, whose account that is, and where

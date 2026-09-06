@@ -31,7 +31,57 @@ struct ReleaseNote: Equatable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "1.3.3",
+            headline: "A calmer settings window with fresh readings when you open it.",
+            changes: [
+                ReleaseNote.Change(
+                    title: "Settings refresh on presentation",
+                    detail: "Opening Settings or returning to it refreshes provider readings and local usage estimates automatically."
+                ),
+                ReleaseNote.Change(
+                    title: "Cleaner controls",
+                    detail: "Appearance, usage, integrations, and app lifecycle controls now live in one grouped page with only the choices that matter."
+                ),
+            ]
+        ),
+        ReleaseNote(
+            version: "1.3.2",
+            headline: "GitHub Copilot Device Flow sign-in and Copilot CLI credential discovery.",
+            changes: [
+                ReleaseNote.Change(
+                    title: "GitHub Device Flow authorization",
+                    detail: "Added full GitHub OAuth Device Flow login support for Copilot. "
+                          + "Clicking 'Sign in to Copilot' copies the one-time user code to your clipboard, "
+                          + "opens GitHub in your browser, and connects automatically."
+                ),
+                ReleaseNote.Change(
+                    title: "Copilot CLI and GitHub keyring credential resolver",
+                    detail: "Automatically reads existing Copilot CLI sessions from the macOS Keychain, "
+                          + "decodes GitHub CLI base64 keyring tokens, and parses monthly quota reset deadlines."
+                ),
+            ]
+        ),
+        ReleaseNote(
+            version: "1.3.1",
+            headline: "Differentiated Antigravity limit windows and tighter tooltip layout.",
+            changes: [
+                ReleaseNote.Change(
+                    title: "Antigravity 5-hour and weekly limits distinguished",
+                    detail: "Quota windows now clearly identify Gemini and Claude/GPT "
+                          + "cadences as 5-hour session limits and weekly allocations, "
+                          + "complete with cycle duration and burn rate math."
+                ),
+                ReleaseNote.Change(
+                    title: "Eliminated empty gap below tooltip cards",
+                    detail: "Tooltip card height now sizes accurately to rendered "
+                          + "content, removing phantom pace line budgets on exhausted "
+                          + "or unpaced windows and keeping bottom margins tight."
+                ),
+            ]
+        ),
+        ReleaseNote(
             version: "1.3.0",
+
             headline: "Codex reads live, and Always show stays on.",
             changes: [
                 ReleaseNote.Change(

@@ -9,8 +9,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var preferences: Preferences?
     private var settings: SettingsWindowController?
     private var whatsNew: WhatsNewWindowController?
-    /// Held for the life of the app: releasing it stops the scheduled checks.
-    private var updater: Updater?
     private var statusItem: StatusItemController?
     private var cancellables = Set<AnyCancellable>()
 
@@ -50,6 +48,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Before Preferences reads anything, or the first launch flag and
             // every choice would be read from an empty domain.
             Preferences.migrateFromPreviousName()
+            // A renamed bundle id is a new defaults domain: carry the readings
+            // and choices across once, the same way the usagenotch rename did.
+            Preferences.migrateFromPreviousName(from: "com.vinz.codenotch")
             let preferences = Preferences()
             self.preferences = preferences
 
@@ -62,7 +63,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // switched-off ones once the binding below delivered.
             let store = UsageStore(
                 providers: [ClaudeOAuthProvider(), CursorLocalProvider(),
-                            CodexLocalProvider(), AntigravityProvider()]
+                            CodexLocalProvider(), AntigravityProvider(),
+                            GrokProvider(), CopilotProvider(),
+                            OpenRouterProvider(), DeepSeekProvider(),
+                            OpenAIProvider()]
                     + webProviders,
                 disconnected: preferences.disconnectedProviders
             )
@@ -73,9 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // this, every launch on any other edge opens with a flash of the
             // right-hand one and then crossfades away from it.
             controller.model.edge = preferences.notchEdge
-
-            let updater = Updater()
-            self.updater = updater
+            controller.model.metricStyle = preferences.metricStyle
 
             let settings = SettingsWindowController(
                 preferences: preferences,
@@ -83,13 +85,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // forward; a snapshot here is what made a switched account keep
                 // showing the old address until the app restarted.
                 providers: { [weak store] in store?.providerSummaries ?? [] },
-                updater: updater,
+                version: Self.appVersion,
                 signOut: { [weak store] in store?.signOut(providerID: $0) },
                 signIn: { [weak store] in store?.signIn(providerID: $0) ?? false },
                 switchAccount: { [weak store] in
                     store?.openAccountSource(providerID: $0) ?? false
                 },
-                retry: { [weak store] in store?.reauthorize(providerID: $0) }
+                retry: { [weak store] in store?.reauthorize(providerID: $0) },
+                refreshAll: { [weak store] in store?.refreshNow() },
+                refreshLedger: { [weak store] in store?.refreshLedger() }
             )
             controller.onOpenSettings = { [weak settings] in settings?.show() }
             self.settings = settings
@@ -97,7 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // What changed, once per version — including on a fresh install,
             // where it is the introduction.
             let whatsNew = WhatsNewWindowController(
-                preferences: preferences, version: updater.currentVersion
+                preferences: preferences, version: Self.appVersion
             )
             self.whatsNew = whatsNew
 
@@ -138,6 +142,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .sink { [weak controller] in controller?.apply(edge: $0) }
                 .store(in: &cancellables)
 
+            preferences.$metricStyle
+                .receive(on: RunLoop.main)
+                .sink { [weak controller] in controller?.model.metricStyle = $0 }
+                .store(in: &cancellables)
+
             preferences.$disconnectedProviders
                 .receive(on: RunLoop.main)
                 .sink { [weak store] in store?.disconnected = $0 }
@@ -158,6 +167,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             store.$refreshing
                 .receive(on: RunLoop.main)
                 .sink { [weak controller] ids in controller?.model.refreshing = ids }
+                .store(in: &cancellables)
+            store.$costs
+                .receive(on: RunLoop.main)
+                .sink { [weak controller] costs in
+                    controller?.model.costs = costs
+                    controller?.model.now = Date()
+                }
                 .store(in: &cancellables)
 
             // CODENOTCH_DISCOVER=<url> loads that page in the signed-in WebView
@@ -201,6 +217,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         controller.show()
         notchController = controller
+    }
+
+    /// The marketing version, for the What's New sheet and the settings
+    /// footer. Read from the bundle rather than stamped anywhere: there is
+    /// exactly one place a release bumps it.
+    static var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
     }
 
     /// Closing the settings window must not take the app with it.

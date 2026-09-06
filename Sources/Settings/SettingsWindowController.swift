@@ -18,31 +18,35 @@ final class SettingsWindowController {
     private let signIn: (String) -> Bool
     private let switchAccount: (String) -> Bool
     private let retry: (String) -> Void
-    private let updater: Updater
+    private let refreshAll: () -> Void
+    private let refreshLedger: () -> Void
+    private let version: String
 
     init(preferences: Preferences,
          providers: @escaping () -> [ProviderSummary],
-         updater: Updater,
+         version: String,
          signOut: @escaping (String) -> Void,
          signIn: @escaping (String) -> Bool,
          switchAccount: @escaping (String) -> Bool,
-         retry: @escaping (String) -> Void) {
+         retry: @escaping (String) -> Void,
+         refreshAll: @escaping () -> Void = {},
+         refreshLedger: @escaping () -> Void = {}) {
         self.switchAccount = switchAccount
         self.retry = retry
-        self.updater = updater
+        self.version = version
         self.preferences = preferences
         self.providers = providers
         self.signOut = signOut
         self.signIn = signIn
+        self.refreshAll = refreshAll
+        self.refreshLedger = refreshLedger
     }
 
-    /// Bring the window to the front from an accessory app.
+    /// Bring the window to the front from the notch or the app menu.
     ///
     /// `makeKeyAndOrderFront` plus `activate` is not enough on its own here:
-    /// an app with no dock icon is not always allowed to pull itself in front
-    /// of whatever the user is working in, and the window then opens silently
-    /// behind everything. `orderFrontRegardless` is the part that does not ask
-    /// permission, and it is why the window appears at all.
+    /// the window can otherwise open behind the app the user is working in.
+    /// `orderFrontRegardless` keeps the settings action predictable.
     private func surface(_ window: NSWindow) {
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
@@ -68,11 +72,13 @@ final class SettingsWindowController {
         window.contentView = NSHostingView(
             rootView: SettingsView(preferences: preferences,
                                    providers: providers,
+                                   version: version,
                                    signOut: signOut,
                                    signIn: signIn,
                                    switchAccount: switchAccount,
                                    retry: retry,
-                                   updater: updater)
+                                   refreshAll: refreshAll,
+                                   refreshLedger: refreshLedger)
         )
         window.center()
         window.isReleasedWhenClosed = false
