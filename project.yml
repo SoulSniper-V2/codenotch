@@ -15,24 +15,27 @@ settings:
     MARKETING_VERSION: "1.3.3"
     CURRENT_PROJECT_VERSION: "8"
 
-    # Signed with a stable identity on purpose. The app reads Claude Code's
-    # OAuth token out of the login keychain, and the keychain's ACL remembers
-    # *which signed binary* was allowed. Ad-hoc or unsigned builds get a new
-    # identity on every rebuild, so "Always Allow" would be forgotten each time
-    # and the prompt would come back after every `make run`.
-    CODE_SIGN_IDENTITY: "Developer ID Application"
-    CODE_SIGN_STYLE: Manual
-    DEVELOPMENT_TEAM: B4932KX535
-    CODE_SIGNING_REQUIRED: "YES"
-    CODE_SIGNING_ALLOWED: "YES"
-    # Required by notarization. Worth knowing what it does *not* break here:
-    # the keychain read is unaffected (the ACL keys on the signing identity,
-    # which is unchanged), and reading Cursor's and Codex's SQLite files is
-    # ordinary file access. It is the App Sandbox that would break both, which
-    # is why that stays off — Developer ID distribution does not require it.
-    ENABLE_HARDENED_RUNTIME: "YES"
     ENABLE_APP_SANDBOX: "NO"
     ENABLE_USER_SCRIPT_SANDBOXING: "NO"
+  configs:
+    Debug:
+      # Debug builds use local ad-hoc signing so anyone can clone, compile,
+      # and run the test suite without requiring an Apple Developer team certificate.
+      CODE_SIGN_IDENTITY: "-"
+      CODE_SIGN_STYLE: Automatic
+      CODE_SIGNING_REQUIRED: "NO"
+      CODE_SIGNING_ALLOWED: "YES"
+      ENABLE_HARDENED_RUNTIME: "NO"
+    Release:
+      # Signed with Developer ID for notarization and distribution. The app reads
+      # Claude Code's OAuth token out of the login keychain, and the keychain's
+      # ACL keys on this stable signing identity.
+      CODE_SIGN_IDENTITY: "Developer ID Application"
+      CODE_SIGN_STYLE: Manual
+      DEVELOPMENT_TEAM: B4932KX535
+      CODE_SIGNING_REQUIRED: "YES"
+      CODE_SIGNING_ALLOWED: "YES"
+      ENABLE_HARDENED_RUNTIME: "YES"
 
 targets:
   Codenotch:
