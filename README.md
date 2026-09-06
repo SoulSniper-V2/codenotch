@@ -4,6 +4,15 @@ A native macOS status companion that anchors an ambient notch to your screen bez
 
 ![Codenotch ambient notch and hover tooltip](docs/design/preview.png)
 
+## Lineage & Acknowledgements
+
+Codenotch is built on the ideas, architecture, and craftsmanship of two upstream projects:
+
+- **[Code Notch](https://github.com/vinzdg/codenotch)** (by [@vinzdg](https://github.com/vinzdg)): Provided the original vision for the bezel-hugging floating notch, Apple hardware notch integration, fluid AppKit/SwiftUI folding animations, and the tactile settings orb.
+- **[CodexBar](https://github.com/steipete/CodexBar)** (by [@steipete](https://github.com/steipete) and contributors): Provided the industry-standard blueprint for local session discovery, multi-provider rate limit extraction, and mathematical pace forecasting.
+
+We borrowed heavily from both repositories, refined the implementations, and brought them together into a unified, integrated experience: pairing Code Notch’s glanceable, physical-feeling interface with CodexBar’s comprehensive provider coverage, quota cadence distinctions (5-hour vs. weekly limits), and token cost store—all while stripping out external update feeds, telemetry, and background trackers.
+
 ---
 
 ## Core Capabilities
