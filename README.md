@@ -2,7 +2,7 @@
 
 A native macOS status companion that anchors an ambient notch to your screen bezel, displaying real-time AI quota windows, reset deadlines, burn-rate forecasts, live agent states, and local token spend.
 
-![Collapsed notch with hover tooltip](docs/design/frame-124-hover-tooltip.png)
+![Codenotch ambient notch and hover tooltip](docs/design/preview.png)
 
 ## Lineage & Acknowledgements
 
