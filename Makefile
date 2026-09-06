@@ -28,24 +28,25 @@ clean:
 	rm -rf build DerivedData $(PROJECT)
 
 # --- Release -----------------------------------------------------------------
-# The path to a notarized .dmg. Run `make release` for the whole thing, or the
-# steps one at a time while something is going wrong.
+# Produces a signed, notarized .dmg. Run `make release` for the whole thing,
+# or the steps one at a time while something is going wrong.
 #
-# One-time setup, which you have to run yourself because it takes a password:
+# One-time setup, which needs a password and so cannot be scripted here:
 #
-#   xcrun notarytool store-credentials UsageNotch \
-#       --apple-id <your-apple-id> --team-id 6WFPL8B9FB --password <app-specific-password>
+#   xcrun notarytool store-credentials Codenotch \
+#       --apple-id <your-apple-id> --team-id B4932KX535 --password <app-specific-password>
 #
 # The app-specific password comes from appleid.apple.com → Sign-In and Security
-# → App-Specific Passwords. Not your Apple ID password.
+# → App-Specific Passwords. Not your Apple ID password. Without it Apple will
+# not issue a ticket — there is no supported path that skips this, in Xcode or
+# out of it. Xcode's Organizer can notarize the .app with its own login, but a
+# .dmg only ever goes through `notarytool`.
 
 RELEASE_DIR := build/release
 APP_NAME    := Codenotch
-# The label of the stored notarytool credential in the login keychain, not
-# anything to do with the app's name — it was created before the rename and
-# renaming the variable is what broke `make release` after it. Recreating it
-# needs an app-specific password, so the label simply stays as it is.
-NOTARY_PROFILE := UsageNotch
+# The label of the stored notarytool credential in the login keychain (see the
+# one-time setup above). Nothing to do with the app's name.
+NOTARY_PROFILE := Codenotch
 DMG := $(RELEASE_DIR)/$(APP_NAME).dmg
 
 .PHONY: archive dmg notarize release verify-release
@@ -67,7 +68,7 @@ archive: gen
 		'<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
 		'<plist version="1.0"><dict>' \
 		'<key>method</key><string>developer-id</string>' \
-		'<key>teamID</key><string>6WFPL8B9FB</string>' \
+		'<key>teamID</key><string>B4932KX535</string>' \
 		'<key>signingStyle</key><string>manual</string>' \
 		'<key>signingCertificate</key><string>Developer ID Application</string>' \
 		'</dict></plist>' > $(RELEASE_DIR)/ExportOptions.plist
@@ -75,6 +76,14 @@ archive: gen
 		-archivePath $(RELEASE_DIR)/$(APP_NAME).xcarchive \
 		-exportOptionsPlist $(RELEASE_DIR)/ExportOptions.plist \
 		-exportPath $(RELEASE_DIR)
+
+-include Makefile.local
+
+# App Store Connect notarization credentials.
+# Override via environment variables or gitignored `Makefile.local`.
+ASC_KEY    ?=
+ASC_KEY_ID ?=
+ASC_ISSUER ?=
 
 # A plain drag-to-Applications disk image. `hdiutil` writes it read-only and
 # compressed, which is what notarization expects.
@@ -87,52 +96,22 @@ dmg: archive
 	hdiutil create -volname "$(APP_NAME)" -srcfolder $(RELEASE_DIR)/stage \
 		-ov -format UDZO $(DMG)
 	codesign --force --sign "Developer ID Application" --timestamp $(DMG)
-	@# The app is inside the dmg now. Leaving the loose copies around is how
-	@# three spare "Codenotch" entries end up in Spotlight; everything
-	@# downstream (notarize, verify, appcast) works from the dmg alone.
-	rm -rf $(RELEASE_DIR)/stage $(RELEASE_DIR)/$(APP_NAME).app
+	rm -rf $(RELEASE_DIR)/stage
 
 # Submits and waits. `--wait` blocks until Apple answers, which is usually a
 # couple of minutes; on rejection, the log says which binary failed and why.
+# Afterwards the ticket is stapled to the dmg, so Gatekeeper passes it offline.
 notarize: dmg
-	xcrun notarytool submit $(DMG) --keychain-profile $(NOTARY_PROFILE) --wait
+	@if [ -z "$(ASC_KEY)" ] || [ -z "$(ASC_KEY_ID)" ] || [ -z "$(ASC_ISSUER)" ]; then \
+		echo "Error: ASC_KEY, ASC_KEY_ID, and ASC_ISSUER must be set (via Makefile.local or environment)"; exit 1; \
+	fi
+	xcrun notarytool submit $(DMG) --key $(ASC_KEY) --key-id $(ASC_KEY_ID) --issuer $(ASC_ISSUER) --wait
 	xcrun stapler staple $(DMG)
 
-# Sparkle ships its tools inside the resolved package artifacts.
-SPARKLE_BIN = $(shell dirname $$(find $$HOME/Library/Developer/Xcode/DerivedData/Codenotch-*/SourcePackages/artifacts/sparkle -name generate_appcast 2>/dev/null | head -1))
-
-# The feed customers' copies poll. Signs each update with the EdDSA private key
-# in the login keychain — Sparkle installs nothing that key did not sign, so a
-# compromised host cannot push code.
-#
-# Writes into docs/, which GitHub Pages serves. The dmg goes there too, so the
-# URL the appcast advertises is the one the file actually sits at — a mismatch
-# is the usual reason an update downloads and then fails to verify.
-# NOT docs/ — that holds the design frames and specs, and GitHub Pages serves
-# whatever it is pointed at. Publishing from there would put the whole design
-# history on the public web alongside the download.
-PAGES_DIR := site
-# Where the dmg actually sits. The enclosure URL the appcast advertises has to
-# match it exactly, or an update downloads and then fails to verify.
-DOWNLOAD_PREFIX := https://hivinz.com/
-
-appcast: $(DMG)
-	@test -n "$(SPARKLE_BIN)" || (echo "Sparkle tools not found — run make build first" && exit 1)
-	mkdir -p $(PAGES_DIR)
-	@# Rebuilt from what is actually in the folder, never merged into the old
-	@# one. The dmg keeps a constant name, so only one build can exist at a
-	@# time — but generate_appcast preserves entries it already knows, and left
-	@# the previous version advertised at a URL now serving a different file,
-	@# with a signature that could never verify.
-	rm -f $(PAGES_DIR)/appcast.xml
-	cp $(DMG) $(PAGES_DIR)/
-	$(SPARKLE_BIN)/generate_appcast $(PAGES_DIR) --download-url-prefix $(DOWNLOAD_PREFIX)
-	@echo "Publish by committing $(PAGES_DIR)/ and pushing."
-
-release: notarize verify-release appcast
+release: archive dmg notarize verify-release
 	@echo "Notarized: $(DMG)"
 
-# What Gatekeeper on a customer's Mac will check. `spctl` accepting the app is
+# What Gatekeeper on a customer's Mac will check. `spctl` accepting the dmg is
 # the actual proof that the download will open without a right-click.
 verify-release:
 	xcrun stapler validate $(DMG)
@@ -140,3 +119,4 @@ verify-release:
 	codesign --verify --deep --strict --verbose=2 $(RELEASE_DIR)/mnt/$(APP_NAME).app
 	spctl --assess --type execute --verbose=4 $(RELEASE_DIR)/mnt/$(APP_NAME).app
 	hdiutil detach $(RELEASE_DIR)/mnt
+	spctl --assess --type install --verbose=4 $(DMG)

@@ -4,12 +4,12 @@ Full detail in [`docs/plans/2026-08-28-usage-notch-plan.md`](docs/plans/2026-08-
 Design spec in [`docs/specs/2026-08-28-usage-notch-design.md`](docs/specs/2026-08-28-usage-notch-design.md).
 
 ## M0 — Project skeleton
-- [x] `project.yml` (XcodeGen: app + unit test target, `LSUIElement`)
+- [x] `project.yml` (XcodeGen: app + unit test target, normal Dock app)
 - [x] `Makefile` (`gen` / `build` / `test` / `run` / `clean`)
 - [x] `.gitignore`, `README.md`, docs, design frames committed
 - [x] `Sources/Info.plist`
 - [x] `Sources/App/CodenotchMain.swift` + `AppDelegate` — launches with no window
-- [x] `make run` starts a Dock-less agent process
+- [x] `make run` starts the ambient notch app
 
 ## M1 — The notch surface
 - [x] `NotchGeometry` — target screen, right-edge anchor rect (vertically centred)
@@ -179,8 +179,8 @@ Cursor account — so the notch honestly reported zero usage belonging to somebo
 who was not the user. The two identities were only visible side by side:
 
 ```
-editor state.vscdb : google-oauth2|user_01JT4P1FS4AB8WA4N7QVSYZRTT  (raphaelvinz.rv@…, "Vinz")
-WebView /api/auth/me:              user_01JXH6KPZ5D7XZHMEQ181QRG2S  (xurfa9@…,        "Xurfa")
+editor state.vscdb : google-oauth2|user_[redacted-a]  ([redacted-email-a], "[name a]")
+WebView /api/auth/me:              user_[redacted-b]  ([redacted-email-b], "[name b]")
 ```
 
 `CursorCredentials` now reads `cursorAuth/accessToken` and
@@ -560,8 +560,8 @@ would be theatre. What there *is* to show is whose readings these are:
 
 ```
 Claude  Pro · via Claude Code
-Cursor  raphaelvinz.rv@gmail.com · Free · via Cursor
-Codex   raphaelvinz.rv@gmail.com · Free · via Codex
+Cursor  [redacted-email] · Free · via Cursor
+Codex   [redacted-email] · Free · via Codex
 ```
 
 That is not decoration. Borrowing a credential means the account being read can

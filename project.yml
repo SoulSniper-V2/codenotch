@@ -1,6 +1,6 @@
 name: Codenotch
 options:
-  bundleIdPrefix: com.vinz
+  bundleIdPrefix: com.soulsniper
   deploymentTarget:
     macOS: "26.0"
   createIntermediateGroups: true
@@ -9,12 +9,12 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     SWIFT_STRICT_CONCURRENCY: minimal
-    # Sparkle compares CFBundleVersion to decide what is newer, and
     # Sources/Info.plist reads both from here — hardcoding them there instead
-    # silently pins every build to one version, so no customer ever sees an
-    # update. Bump CURRENT_PROJECT_VERSION on every release.
-    MARKETING_VERSION: "1.3.0"
-    CURRENT_PROJECT_VERSION: "4"
+    # silently pins every build to one version. Bump CURRENT_PROJECT_VERSION
+    # on every release.
+    MARKETING_VERSION: "1.3.3"
+    CURRENT_PROJECT_VERSION: "8"
+
     # Signed with a stable identity on purpose. The app reads Claude Code's
     # OAuth token out of the login keychain, and the keychain's ACL remembers
     # *which signed binary* was allowed. Ad-hoc or unsigned builds get a new
@@ -22,7 +22,7 @@ settings:
     # and the prompt would come back after every `make run`.
     CODE_SIGN_IDENTITY: "Developer ID Application"
     CODE_SIGN_STYLE: Manual
-    DEVELOPMENT_TEAM: 6WFPL8B9FB
+    DEVELOPMENT_TEAM: B4932KX535
     CODE_SIGNING_REQUIRED: "YES"
     CODE_SIGNING_ALLOWED: "YES"
     # Required by notarization. Worth knowing what it does *not* break here:
@@ -34,19 +34,12 @@ settings:
     ENABLE_APP_SANDBOX: "NO"
     ENABLE_USER_SCRIPT_SANDBOXING: "NO"
 
-packages:
-  Sparkle:
-    url: https://github.com/sparkle-project/Sparkle
-    from: "2.6.0"
-
 targets:
   Codenotch:
     type: application
     platform: macOS
     sources:
       - path: Sources
-    dependencies:
-      - package: Sparkle
     info:
       path: Sources/Info.plist
       properties:
@@ -62,29 +55,12 @@ targets:
         # build settings keeps one place to bump.
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
-        # --- Sparkle -------------------------------------------------------
-        # Beside the download itself, on hivinz.com. It used to point at a
-        # GitHub Pages URL for a repo that was never created, so every check
-        # got a 404 and Sparkle reported "an error occurred in retrieving
-        # update information" — correctly, since there was nothing there.
-        #
-        # Must stay reachable for as long as any copy is installed: the feed is
-        # the only route by which a shipped build can ever be replaced.
-        SUFeedURL: https://hivinz.com/appcast.xml
-        # The public half of the EdDSA key in the login keychain. Sparkle
-        # refuses any update not signed by its private half, so a hijacked feed
-        # or a swapped download cannot install code. Losing the private key
-        # means no existing install can ever be updated again — back it up.
-        SUPublicEDKey: rmUfT5r49nR+3HdkbR5/YYLghfnAi6L49eOk3sIegSk=
-        # Set explicitly so Sparkle never asks on first launch. Left unset, it
-        # shows a "check for updates automatically?" prompt, which is exactly
-        # the permission this is meant to avoid.
-        SUEnableAutomaticChecks: true
-        SUAutomaticallyUpdate: true
-        SUScheduledCheckInterval: 86400
+        # No update feed on purpose: this copy never phones home. New versions
+        # come from wherever it was installed from — there is nothing here for
+        # Sparkle to check, so Sparkle is not in the build at all.
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.vinz.codenotch
+        PRODUCT_BUNDLE_IDENTIFIER: com.soulsniper.codenotch
         GENERATE_INFOPLIST_FILE: "NO"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
@@ -97,7 +73,7 @@ targets:
       - target: Codenotch
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.vinz.codenotch.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.soulsniper.codenotch.tests
         GENERATE_INFOPLIST_FILE: "YES"
 
 schemes:

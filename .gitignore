@@ -7,3 +7,9 @@ DerivedData/
 xcuserdata/
 *.xcuserstate
 .swiftpm/
+
+# Local developer credentials and overrides
+Makefile.local
+.env
+*.p8
+*.pem
