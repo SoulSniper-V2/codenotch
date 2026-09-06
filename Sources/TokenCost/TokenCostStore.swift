@@ -117,6 +117,58 @@ final class TokenCostStore: ObservableObject {
         saveIfDirty()
     }
 
+    struct DailyHistoryPoint: Identifiable, Equatable {
+        let id: String
+        let dayLabel: String
+        let tokens: Double
+        let costUSD: Double
+    }
+
+    func historyPoints(daysBack: Int = 14) -> [DailyHistoryPoint] {
+        if !loaded { load(); loaded = true }
+        let now = Date()
+        var points: [DailyHistoryPoint] = []
+        let cal = Calendar.current
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M/d"
+
+        for offset in (0..<daysBack).reversed() {
+            guard let date = cal.date(byAdding: .day, value: -offset, to: now) else { continue }
+            let dayKey = LogScanner.todayKey(now: date)
+            var dayTokens = 0.0
+            var dayCost = 0.0
+
+            for ledger in ledgers.values {
+                if let models = ledger.days[dayKey] {
+                    for (model, bucket) in models {
+                        dayTokens += bucket.total
+                        let cost: Double?
+                        if ledger.provider == "codex" {
+                            cost = TokenPricing.codexCost(
+                                model: model, input: bucket.input,
+                                cached: bucket.cacheRead, write: bucket.cacheWrite,
+                                output: bucket.output)
+                        } else {
+                            cost = TokenPricing.claudeCost(
+                                model: model, input: bucket.input, cacheRead: bucket.cacheRead,
+                                cacheCreation: bucket.cacheCreation,
+                                cacheCreation1h: bucket.cacheCreation1h, output: bucket.output)
+                        }
+                        if let cost { dayCost += cost }
+                    }
+                }
+            }
+
+            points.append(DailyHistoryPoint(
+                id: dayKey,
+                dayLabel: formatter.string(from: date),
+                tokens: dayTokens,
+                costUSD: dayCost
+            ))
+        }
+        return points
+    }
+
     // MARK: - Scan (off the main thread)
 
     private struct ScanResult {

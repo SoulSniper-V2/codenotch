@@ -27,6 +27,8 @@ struct SettingsView: View {
     let refreshAll: () -> Void
     /// Forces the local Claude Code/Codex token ledger to rescan its sources.
     let refreshLedger: () -> Void
+    /// Historical daily token spend points for chart rendering.
+    let historyPoints: () -> [TokenCostStore.DailyHistoryPoint]
 
     init(preferences: Preferences,
          providers: @escaping () -> [ProviderSummary],
@@ -36,7 +38,8 @@ struct SettingsView: View {
          switchAccount: @escaping (String) -> Bool,
          retry: @escaping (String) -> Void,
          refreshAll: @escaping () -> Void = {},
-         refreshLedger: @escaping () -> Void = {}) {
+         refreshLedger: @escaping () -> Void = {},
+         historyPoints: @escaping () -> [TokenCostStore.DailyHistoryPoint] = { [] }) {
         self.preferences = preferences
         self.providers = providers
         self.version = version
@@ -46,6 +49,7 @@ struct SettingsView: View {
         self.retry = retry
         self.refreshAll = refreshAll
         self.refreshLedger = refreshLedger
+        self.historyPoints = historyPoints
     }
 
     var body: some View {
@@ -118,6 +122,31 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                Toggle("Global shortcut (⌃⌥Space) peeks notch", isOn: $preferences.globalHotkeyEnabled)
+            }
+
+            Section("Alerts & Celebrations") {
+                Toggle("Quota reset notifications", isOn: $preferences.notifyOnReset)
+                Text("Receive a notification banner when a 5-hour or weekly quota resets.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Toggle("Low-quota warnings", isOn: $preferences.notifyOnLowQuota)
+                if preferences.notifyOnLowQuota {
+                    Picker("Warning threshold", selection: $preferences.quotaWarningThreshold) {
+                        Text("10% remaining").tag(10)
+                        Text("20% remaining").tag(20)
+                        Text("25% remaining").tag(25)
+                    }
+                }
+
+                Toggle("Confetti celebration on reset", isOn: $preferences.confettiEnabled)
+                Text("Burst subtle confetti when an exhausted limit is restored.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Section("Usage") {
@@ -132,6 +161,8 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                SpendChartView(points: historyPoints())
 
                 Label("Local usage estimates", systemImage: "chart.bar.xaxis")
                     .font(.callout)

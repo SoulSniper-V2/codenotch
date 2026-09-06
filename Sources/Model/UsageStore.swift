@@ -239,6 +239,11 @@ final class UsageStore: ObservableObject {
         }
     }
 
+    /// History points for token spend visualization.
+    func dailyHistoryPoints(daysBack: Int = 14) -> [TokenCostStore.DailyHistoryPoint] {
+        tokenCosts.historyPoints(daysBack: daysBack)
+    }
+
     /// Sign out of one provider: discard anything of its account that this app
     /// is holding, and stop reading it.
     ///

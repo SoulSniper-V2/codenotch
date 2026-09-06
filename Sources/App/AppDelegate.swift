@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settings: SettingsWindowController?
     private var whatsNew: WhatsNewWindowController?
     private var statusItem: StatusItemController?
+    private var alertManager: QuotaAlertManager?
     private var cancellables = Set<AnyCancellable>()
 
     /// The unit bundle is hosted by this app, so `xcodebuild test` launches it
@@ -93,10 +94,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 },
                 retry: { [weak store] in store?.reauthorize(providerID: $0) },
                 refreshAll: { [weak store] in store?.refreshNow() },
-                refreshLedger: { [weak store] in store?.refreshLedger() }
+                refreshLedger: { [weak store] in store?.refreshLedger() },
+                historyPoints: { [weak store] in store?.dailyHistoryPoints() ?? [] }
             )
             controller.onOpenSettings = { [weak settings] in settings?.show() }
             self.settings = settings
+
+            let alertManager = QuotaAlertManager(preferences: preferences)
+            alertManager.onCelebration = { [weak controller] in
+                controller?.model.triggerCelebration()
+            }
+            self.alertManager = alertManager
+
+            AppNotifications.shared.requestAuthorization()
+
+            GlobalHotkeyManager.shared.start { [weak controller] in
+                controller?.toggleOpenFromHotkey()
+            }
+            GlobalHotkeyManager.shared.setEnabled(preferences.globalHotkeyEnabled)
+
+            preferences.$globalHotkeyEnabled
+                .receive(on: RunLoop.main)
+                .sink { GlobalHotkeyManager.shared.setEnabled($0) }
+                .store(in: &cancellables)
 
             // What changed, once per version — including on a fresh install,
             // where it is the introduction.
@@ -154,11 +174,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             store.$snapshots
                 .receive(on: RunLoop.main)
-                .sink { [weak controller] snapshots in
+                .sink { [weak controller, weak alertManager] snapshots in
                     withAnimation(NotchMotion.unfold) {
                         controller?.model.snapshots = snapshots
                     }
                     controller?.model.now = Date()
+                    alertManager?.processSnapshots(snapshots)
                 }
                 .store(in: &cancellables)
             store.start()
@@ -248,6 +269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        GlobalHotkeyManager.shared.stop()
         store?.stop()
         monitors.values.forEach { $0.stop() }
         notchController?.stop()

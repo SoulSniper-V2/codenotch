@@ -57,6 +57,16 @@ struct NotchRootView: View {
                             y: model.edge.outward.y * Design.px(24)
                         )))
                 }
+
+                if model.showConfetti {
+                    ConfettiView {
+                        model.showConfetti = false
+                    }
+                    .position(place.point(
+                        along: model.notchLeadingInset + model.notchLength / 2,
+                        across: model.notchDepth / 2
+                    ))
+                }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
             // Swapping cards is a movement like any other here.

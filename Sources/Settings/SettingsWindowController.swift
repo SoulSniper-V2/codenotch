@@ -20,6 +20,7 @@ final class SettingsWindowController {
     private let retry: (String) -> Void
     private let refreshAll: () -> Void
     private let refreshLedger: () -> Void
+    private let historyPoints: () -> [TokenCostStore.DailyHistoryPoint]
     private let version: String
 
     init(preferences: Preferences,
@@ -30,7 +31,8 @@ final class SettingsWindowController {
          switchAccount: @escaping (String) -> Bool,
          retry: @escaping (String) -> Void,
          refreshAll: @escaping () -> Void = {},
-         refreshLedger: @escaping () -> Void = {}) {
+         refreshLedger: @escaping () -> Void = {},
+         historyPoints: @escaping () -> [TokenCostStore.DailyHistoryPoint] = { [] }) {
         self.switchAccount = switchAccount
         self.retry = retry
         self.version = version
@@ -40,6 +42,7 @@ final class SettingsWindowController {
         self.signIn = signIn
         self.refreshAll = refreshAll
         self.refreshLedger = refreshLedger
+        self.historyPoints = historyPoints
     }
 
     /// Bring the window to the front from the notch or the app menu.
@@ -78,7 +81,8 @@ final class SettingsWindowController {
                                    switchAccount: switchAccount,
                                    retry: retry,
                                    refreshAll: refreshAll,
-                                   refreshLedger: refreshLedger)
+                                   refreshLedger: refreshLedger,
+                                   historyPoints: historyPoints)
         )
         window.center()
         window.isReleasedWhenClosed = false

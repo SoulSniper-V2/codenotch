@@ -56,6 +56,31 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(metricStyle.rawValue, forKey: Keys.metricStyle) }
     }
 
+    /// Notify when an exhausted quota rolls over.
+    @Published var notifyOnReset: Bool {
+        didSet { defaults.set(notifyOnReset, forKey: Keys.notifyOnReset) }
+    }
+
+    /// Warn when quota drops below the warning threshold.
+    @Published var notifyOnLowQuota: Bool {
+        didSet { defaults.set(notifyOnLowQuota, forKey: Keys.notifyOnLowQuota) }
+    }
+
+    /// Percentage remaining threshold for low quota warning (e.g. 20%).
+    @Published var quotaWarningThreshold: Int {
+        didSet { defaults.set(quotaWarningThreshold, forKey: Keys.quotaWarningThreshold) }
+    }
+
+    /// Global hotkey (⌃⌥Space) toggles/peeks the notch.
+    @Published var globalHotkeyEnabled: Bool {
+        didSet { defaults.set(globalHotkeyEnabled, forKey: Keys.globalHotkeyEnabled) }
+    }
+
+    /// Celebrate quota reset with confetti.
+    @Published var confettiEnabled: Bool {
+        didSet { defaults.set(confettiEnabled, forKey: Keys.confettiEnabled) }
+    }
+
     /// The version whose changes have already been shown.
     ///
     /// Written when the What's New dialogue is dismissed rather than when it
@@ -86,6 +111,11 @@ final class Preferences: ObservableObject {
         static let edge = "notchEdge"
         static let lastSeenVersion = "lastSeenVersion"
         static let metricStyle = "metricDisplayMode"
+        static let notifyOnReset = "notifyOnReset"
+        static let notifyOnLowQuota = "notifyOnLowQuota"
+        static let quotaWarningThreshold = "quotaWarningThreshold"
+        static let globalHotkeyEnabled = "globalHotkeyEnabled"
+        static let confettiEnabled = "confettiEnabled"
     }
 
     /// True the very first time this copy runs, and never again.
@@ -147,6 +177,11 @@ final class Preferences: ObservableObject {
         self.launchAtLogin = Self.isRegisteredForLogin
         self.metricStyle = defaults.string(forKey: Keys.metricStyle)
             .flatMap(MetricDisplayMode.init(rawValue:)) ?? .used
+        self.notifyOnReset = defaults.object(forKey: Keys.notifyOnReset) as? Bool ?? true
+        self.notifyOnLowQuota = defaults.object(forKey: Keys.notifyOnLowQuota) as? Bool ?? true
+        self.quotaWarningThreshold = defaults.object(forKey: Keys.quotaWarningThreshold) as? Int ?? 20
+        self.globalHotkeyEnabled = defaults.object(forKey: Keys.globalHotkeyEnabled) as? Bool ?? true
+        self.confettiEnabled = defaults.object(forKey: Keys.confettiEnabled) as? Bool ?? true
     }
 
     func isConnected(_ providerID: String) -> Bool {

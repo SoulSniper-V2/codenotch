@@ -531,6 +531,26 @@ final class NotchWindowController {
         updateInteractiveRects()
     }
 
+    /// Toggles the notch open or closed from a keyboard shortcut.
+    func toggleOpenFromHotkey() {
+        guard !model.isAlwaysOn else { return }
+        if model.isExpanded {
+            model.isPinned = false
+            withAnimation(NotchMotion.unfold) {
+                model.isExpanded = false
+                model.hoveredIndex = nil
+            }
+        } else {
+            model.isPinned = true
+            foldWork?.cancel()
+            foldWork = nil
+            withAnimation(NotchMotion.unfold) {
+                model.isExpanded = true
+            }
+        }
+        updateInteractiveRects()
+    }
+
     private func cellIndex(along: CGFloat) -> Int? {
         let pitch = NotchLayout.cellPitch(for: model.edge)
         for index in model.snapshots.indices {

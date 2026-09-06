@@ -52,6 +52,12 @@ final class NotchViewModel: ObservableObject {
     /// Set by the window controller from the screen the panel is on, because
     /// that is the only thing that knows which screen that is.
     @Published var hardwareNotch: HardwareNotch?
+    /// Whether a celebration burst (e.g. quota reset) is currently playing.
+    @Published var showConfetti = false
+
+    func triggerCelebration() {
+        showConfetti = true
+    }
 
     /// How much screen there is to spend on the panel.
     ///
