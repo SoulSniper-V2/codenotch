@@ -162,19 +162,19 @@ final class NotchWindowController {
         )
     }
 
-    /// What wakes the folded notch. Deliberately larger than the pill it
-    /// surrounds — a 10pt target on a screen edge is a fiddly thing to hit, and
-    /// the cost of being generous is only that it opens a little eagerly.
+    /// What wakes the folded notch: the resting shape itself, plus a small
+    /// margin — not a generous band. A band tens of points deep trips on every
+    /// pointer heading for a scrollbar, a window edge or the Dock, and the
+    /// notch opens before it is touched. See `NotchLayout.wakeMargin`.
     private var pillRect: CGRect {
         // Whatever the resting shape is — the pill, or the display's own notch
-        // when it is joining one — the region that wakes it is that plus a
-        // generous band, because both are small targets on a screen edge.
-        let length = max(model.restingLength, NotchLayout.pillHotZone)
+        // when it is joining one.
+        let slop = NotchLayout.wakeMargin
         return placement.rect(
-            along: model.slack + (model.shapeLength - length) / 2,
+            along: model.slack + (model.shapeLength - model.restingLength) / 2 - slop,
             across: 0,
-            length: length,
-            depth: model.restingDepth + NotchLayout.pillHotZone
+            length: model.restingLength + 2 * slop,
+            depth: model.restingDepth + slop
         )
     }
 
@@ -213,12 +213,15 @@ final class NotchWindowController {
         guard model.snapshots.indices.contains(index) else { return nil }
         let snapshot = model.snapshots[index]
         let cardHeight = NotchLayout.cardHeight(
-            windowCount: snapshot.windows.count,
+            windows: snapshot.windows,
             sessionCount: model.activity(for: snapshot.id)?.sessions.count ?? 0,
             sessionCap: model.sessionCap,
             statusMessage: snapshot.statusMessage,
-            blockMessage: snapshot.block?.summary(now: model.now)
+            blockMessage: snapshot.block?.summary(now: model.now),
+            costLineCount: model.costs[snapshot.id]?.lineCount ?? 0,
+            now: model.now
         )
+
         // Across the stack the region is the card, its tail, and the gap the
         // pointer has to cross. Along it, the card's own extent.
         let cardAcross = model.edge.isVertical ? NotchLayout.cardWidth : cardHeight

@@ -235,13 +235,18 @@ final class HorizontalStackTests: XCTestCase {
 
     /// The panel is sized from the stack, so a horizontal notch is wide and
     /// shallow where a vertical one is narrow and tall.
+    ///
+    /// Four cells rather than three: each limit window now carries a pace line
+    /// ("N% in deficit · Runs out in X"), which deepened the tallest card and
+    /// with it the horizontal panel's inward reach. At three cells a top panel
+    /// is near-square; the turn still reads at four.
     @MainActor
     func testThePanelTurnsWithTheStack() {
         let model = NotchViewModel()
         model.edge = .right
-        let side = model.panelSize(cellCount: 3)
+        let side = model.panelSize(cellCount: 4)
         model.edge = .top
-        let horizontal = model.panelSize(cellCount: 3)
+        let horizontal = model.panelSize(cellCount: 4)
         XCTAssertGreaterThan(side.height, side.width)
         XCTAssertGreaterThan(horizontal.width, horizontal.height)
     }
