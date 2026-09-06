@@ -9,6 +9,11 @@ final class NotchViewModel: ObservableObject {
     /// ring per provider, so nothing in the notch looks like a ring without
     /// being one.
     @Published var sessions: [String: [AgentSession]] = [:]
+    /// Token/cost estimates from local logs, keyed by provider. They surface
+    /// inside that provider's own tooltip rather than as a cell of their own —
+    /// one ring per provider, so nothing in the notch looks like a ring
+    /// without being one.
+    @Published var costs: [String: CostSummary] = [:]
 
     /// Which cell the cursor is over, if any. Driven from the window controller
     /// rather than SwiftUI's `.onHover`: the panel ignores mouse events until
@@ -40,6 +45,8 @@ final class NotchViewModel: ObservableObject {
     /// Which screen edge the notch is welded to. Everything geometric reads
     /// this through `placement` rather than assuming an axis.
     @Published var edge: NotchEdge = .right
+    /// Metric display mode: percentage used vs. remaining.
+    @Published var metricStyle: MetricDisplayMode = .used
     /// The display's own notch, when this edge has to share the bezel with one.
     ///
     /// Set by the window controller from the screen the panel is on, because
@@ -249,11 +256,11 @@ final class NotchViewModel: ObservableObject {
         NotchLayout.ringCenter(index: index, edge: edge, flare: flare) + endSpread
     }
 
-    /// A provider with no activity source gets none, rather than borrowing
-    /// somebody else's.
     func activity(for providerID: String) -> ActivitySummary? {
-        ActivitySummary(sessions: sessions[providerID] ?? [])
+        guard let s = sessions[providerID], !s.isEmpty else { return nil }
+        return ActivitySummary(sessions: s)
     }
+
 
     var hoveredSnapshot: ProviderSnapshot? {
         guard let hoveredIndex, snapshots.indices.contains(hoveredIndex) else { return nil }

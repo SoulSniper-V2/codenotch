@@ -24,7 +24,7 @@ final class TooltipRenderTests: XCTestCase {
         )
         let activity = ActivitySummary(sessions: [
             session("codenotch-6f", .idle, minutes: 0),
-            session("hivinz-web-2f", .busy, minutes: 1),
+            session("agent-web-2f", .busy, minutes: 1),
             session("codenotch-18", .waiting, minutes: 3)
         ])
 
@@ -49,4 +49,45 @@ final class TooltipRenderTests: XCTestCase {
             try png.write(to: URL(fileURLWithPath: path))
         }
     }
+
+    func testCursorTooltipLayout() throws {
+        let now = Date()
+        let reset = now.addingTimeInterval(20 * 86400)
+        let windows = [
+            LimitWindow(id: "included", label: "Included usage", usedFraction: 1.0,
+                        resetsAt: reset, windowMinutes: 44640),
+            LimitWindow(id: "api", label: "API usage", usedFraction: 1.0,
+                        resetsAt: reset, windowMinutes: 44640),
+            LimitWindow(id: "cursor-grok-bot", label: "Grok Bot", usedFraction: 0.0246,
+                        resetsAt: reset, windowMinutes: 5945)
+        ]
+        let snapshot = ProviderSnapshot(
+            id: "cursor",
+            displayName: "Cursor",
+            glyph: .cursor,
+            fidelity: .official,
+            status: .ok,
+            windows: windows
+        )
+
+        let accurateHeight = NotchLayout.cardHeight(windows: windows, sessionCount: 0, costLineCount: 0, now: now)
+        let legacyHeight = NotchLayout.cardHeight(windowCount: 3, sessionCount: 0, costLineCount: 0)
+        print("ACCURATE HEIGHT: \(accurateHeight), LEGACY HEIGHT: \(legacyHeight)")
+        XCTAssertLessThan(accurateHeight, legacyHeight, "Accurate height should be noticeably less than legacy height when windows have no pace line")
+
+        let view = TooltipCard(snapshot: snapshot, activity: nil, cost: nil, now: now)
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 2
+        let image = try XCTUnwrap(renderer.nsImage)
+        print("CURSOR RENDERED IMAGE SIZE: \(image.size)")
+
+        let path = "/tmp/cursor_tooltip.png"
+        let tiff = try XCTUnwrap(image.tiffRepresentation)
+        let png = try XCTUnwrap(NSBitmapImageRep(data: tiff)?
+            .representation(using: .png, properties: [:]))
+        try png.write(to: URL(fileURLWithPath: path))
+    }
 }
+
+
+

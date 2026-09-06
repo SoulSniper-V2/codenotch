@@ -16,9 +16,11 @@ enum Fixtures {
                 status: .ok,
                 windows: [
                     LimitWindow(id: "claude.session", label: "Current session",
-                                usedFraction: 0.73, resetsAt: sessionReset),
+                                usedFraction: 0.73, resetsAt: sessionReset,
+                                windowMinutes: 300),
                     LimitWindow(id: "claude.all", label: "All models",
-                                usedFraction: 0.07, resetsAt: midnight)
+                                usedFraction: 0.07, resetsAt: midnight,
+                                windowMinutes: 10_080)
                 ]
             ),
             ProviderSnapshot(
@@ -29,7 +31,8 @@ enum Fixtures {
                 status: .ok,
                 windows: [
                     LimitWindow(id: "openai.session", label: "Current session",
-                                usedFraction: 0.21, resetsAt: now.addingTimeInterval(3 * 60 * 60))
+                                usedFraction: 0.21, resetsAt: now.addingTimeInterval(3 * 60 * 60),
+                                windowMinutes: 300)
                 ]
             ),
             ProviderSnapshot(
@@ -40,7 +43,8 @@ enum Fixtures {
                 status: .ok,
                 windows: [
                     LimitWindow(id: "third.daily", label: "Daily quota",
-                                usedFraction: 0.52, resetsAt: midnight)
+                                usedFraction: 0.52, resetsAt: midnight,
+                                windowMinutes: 1_440)
                 ]
             )
         ]

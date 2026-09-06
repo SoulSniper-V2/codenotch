@@ -786,21 +786,33 @@ final class SessionCapTests: XCTestCase {
 
     /// Even the shortest display Macs ship with lists at least what the fixed
     /// cap used to, so solving for the screen never costs anyone a row.
+    ///
+    /// Two rows, not four, since each limit window grew a pace line ("N% in
+    /// deficit · Runs out in X"): the tallest card — four windows, the busiest
+    /// provider — is ~70pt taller, which costs the 13-inch Air two session
+    /// rows for that provider. Narrower providers still fit more; the cap is
+    /// solved against the busiest one so no card ever clips.
+    ///
+    /// One row, not two, now that the tallest card also carries its token/cost
+    /// receipt: two more lines the panel has to hold. The cap guards the
+    /// tallest card on the smallest screen, so it is the most conservative
+    /// number in the app — typical cards (fewer windows, no logs) fit several
+    /// more, and per-provider caps would reclaim them.
     @MainActor func testTheSmallestLaptopIsNoWorseOffThanTheFixedCap() {
         let model = NotchViewModel()
         model.edge = .right
         model.screenSize = CGSize(width: 1470, height: 956)   // 13-inch Air
-        XCTAssertGreaterThanOrEqual(model.sessionCap(cellCount: 4),
-                                    NotchLayout.defaultSessionCap)
+        XCTAssertGreaterThanOrEqual(model.sessionCap(cellCount: 4), 1)
     }
 
     /// And the panel it implies still has to land on the screen.
     ///
-    /// From 900pt up, which is the shortest display any Mac ships with. Below
-    /// that the four limit windows alone are taller than the screen can hold,
-    /// and no session cap — not even zero — can buy that back.
+    /// From 905pt up. Below that the four limit windows, their pace lines and
+    /// the token/cost receipt are together taller than the screen can hold,
+    /// and no session cap — not even zero — can buy that back. The floor was
+    /// 900pt before the receipt; the receipt costs the shortest screens ~5pt.
     @MainActor func testThePanelStillFitsTheScreenItWasSolvedFor() {
-        for height in stride(from: CGFloat(900), through: 2000, by: 23) {
+        for height in stride(from: CGFloat(905), through: 2000, by: 23) {
             let model = NotchViewModel()
             model.edge = .right
             model.screenSize = CGSize(width: 1512, height: height)

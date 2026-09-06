@@ -42,19 +42,40 @@ struct LimitWindow: Identifiable, Codable, Equatable {
     let used: Int?
     /// Nil when the provider does not say when the window rolls over.
     let resetsAt: Date?
+    /// Length of the window in minutes, when the provider states it (Codex
+    /// reports `windowDurationMins` / `window_minutes`). Drives the
+    /// deficit/reserve pace estimate; when nil the estimate falls back to
+    /// `inferredWindowMinutes` from the id/label, and windows with neither
+    /// simply show no pace line.
+    let windowMinutes: Double?
+    /// Exact text for the tooltip row, replacing the computed summary.
+    ///
+    /// Money and allowance providers (credits, liras of prepaid balance, kWh)
+    /// do not count in whole units a `"% Used · % left"` line can render —
+    /// "$10.00 left" is not an integer `remaining`. Rather than bending the
+    /// counts to fit, the window says what it means.
+    let customSummary: String?
+    /// Exact text for the cell under the ring, replacing the computed figure.
+    let customHeadline: String?
 
     init(id: String, label: String, usedFraction: Double? = nil,
-         remaining: Int? = nil, used: Int? = nil, resetsAt: Date? = nil) {
+         remaining: Int? = nil, used: Int? = nil, resetsAt: Date? = nil,
+         windowMinutes: Double? = nil, customSummary: String? = nil,
+         customHeadline: String? = nil) {
         self.id = id
         self.label = label
         self.usedFraction = usedFraction
         self.remaining = remaining
         self.used = used
         self.resetsAt = resetsAt
+        self.windowMinutes = windowMinutes
+        self.customSummary = customSummary
+        self.customHeadline = customHeadline
     }
 
     /// What the tooltip says on the line under the bar.
     var summary: String {
+        if let customSummary { return customSummary }
         if let usedFraction {
             // Both ends of the same figure. Vendors do not agree on which to
             // show — Codex writes "87% remaining", Claude writes "% used" — so
@@ -138,7 +159,20 @@ struct ProviderSnapshot: Identifiable, Equatable {
 
     /// What the cell prints under the ring.
     var headlineText: String {
-        if let usedFraction { return "\(Int((usedFraction * 100).rounded()))%" }
+        headlineText(for: .used)
+    }
+
+    /// What the cell prints under the ring, respecting the chosen metric display style.
+    func headlineText(for style: MetricDisplayMode = .used) -> String {
+        if let customHeadline = headline?.customHeadline { return customHeadline }
+        if let usedFraction {
+            switch style {
+            case .used:
+                return "\(Int((usedFraction * 100).rounded()))%"
+            case .remaining:
+                return "\(max(0, 100 - Int((usedFraction * 100).rounded())))%"
+            }
+        }
         if let remaining = headline?.remaining { return "\(remaining)" }
         if let used = headline?.used { return "\(used)" }
         return "—"
@@ -149,7 +183,18 @@ struct ProviderSnapshot: Identifiable, Equatable {
     var hasReading: Bool { !windows.isEmpty }
 
     /// A ring can only be drawn when the provider said what the limit was.
-    var ringFraction: Double? { usedFraction }
+    var ringFraction: Double? { ringFraction(for: .used) }
+
+    /// The fraction to draw around the ring arc: 0..1, respecting metric display mode.
+    func ringFraction(for style: MetricDisplayMode = .used) -> Double? {
+        guard let used = usedFraction else { return nil }
+        switch style {
+        case .used:
+            return used
+        case .remaining:
+            return max(0, 1.0 - used)
+        }
+    }
 
     /// Signing in means something different per provider, so the prompt has to
     /// say which door to knock on.

@@ -227,7 +227,7 @@ private struct StatusRing: View {
 // MARK: - Providers
 
 /// One metered window: label and reset copy on a line, a track bar, then the
-/// percentage burned.
+/// percentage burned, then the CodexBar pace estimate (deficit/reserve + ETA).
 private struct LimitWindowRow: View {
     let window: LimitWindow
     let fidelity: Fidelity
@@ -243,6 +243,22 @@ private struct LimitWindowRow: View {
     /// Blank rather than invented: some providers never say when the window rolls.
     private var resetText: String {
         window.resetsAt.map { ResetCopy.text(for: $0, now: now) } ?? ""
+    }
+
+    /// CodexBar burn-rate estimate: "N% in deficit · Runs out in X" /
+    /// "N% in reserve · Lasts until reset". Nil while the window is too fresh
+    /// (<3% elapsed), exhausted, or has no known length — no invented pace.
+    private var pace: UsagePace? { UsagePace.estimate(for: window, now: now) }
+
+    private var paceLine: String? { PaceText.line(for: window, now: now) }
+
+    private var paceColor: Color {
+        guard let pace else { return Palette.textSecondary }
+        switch pace.stage {
+        case .onTrack: return Palette.textSecondary
+        case .slightlyAhead, .ahead, .farAhead: return Palette.critical
+        case .slightlyBehind, .behind, .farBehind: return Palette.ample
+        }
     }
 
     var body: some View {
@@ -264,6 +280,13 @@ private struct LimitWindowRow: View {
                 .font(Typography.cardBody)
                 .foregroundStyle(Palette.textPrimary)
                 .padding(.top, NotchLayout.barToUsed)
+
+            if let paceLine {
+                Text(paceLine)
+                    .font(Typography.cardBody)
+                    .foregroundStyle(paceColor)
+                    .padding(.top, NotchLayout.paceToUsed)
+            }
         }
     }
 }
@@ -327,6 +350,28 @@ private struct BlockedRow: View {
         }
         .font(Typography.cardBody)
         .foregroundStyle(Palette.critical)
+    }
+}
+
+// MARK: - Cost
+
+/// The token/cost receipt: what the local logs say this provider burned.
+///
+/// Two quiet rows under the quota bars — today and the last 30 days — each a
+/// token count with an estimated cost beside it. The `~` is the point: these
+/// are summed from logs on this Mac, never the vendor's own number, and the
+/// card must not dress them up as one.
+private struct CostSection: View {
+    let cost: CostSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: NotchLayout.costRowGap) {
+            ForEach(Array(cost.rows.enumerated()), id: \.offset) { _, row in
+                SplitRow(leading: row.0, trailing: row.1,
+                         leadingColor: Palette.textSecondary)
+            }
+        }
+        .padding(.top, NotchLayout.costToWindows)
     }
 }
 
@@ -427,6 +472,8 @@ private struct SessionList: View {
 struct TooltipCard: View {
     let snapshot: ProviderSnapshot
     var activity: ActivitySummary?
+    /// Token/cost estimate from local logs, when this provider keeps any.
+    var cost: CostSummary?
     let now: Date
     /// Which way the card sits from the notch, which follows from the edge.
     var direction: NotchEdge.TooltipDirection = .leading
@@ -438,11 +485,13 @@ struct TooltipCard: View {
     /// reachable can never drift apart.
     private var height: CGFloat {
         NotchLayout.cardHeight(
-            windowCount: snapshot.windows.count,
+            windows: snapshot.windows,
             sessionCount: activity?.sessions.count ?? 0,
             sessionCap: sessionCap,
             statusMessage: snapshot.statusMessage,
-            blockMessage: snapshot.block?.summary(now: now)
+            blockMessage: snapshot.block?.summary(now: now),
+            costLineCount: cost?.lineCount ?? 0,
+            now: now
         )
     }
 
@@ -455,10 +504,14 @@ struct TooltipCard: View {
             ZStack(alignment: .topLeading) {
                 VStack(alignment: .leading, spacing: 0) {
                     ProviderTooltip(snapshot: snapshot, now: now)
-                    if let activity {
+                    if let cost {
+                        CostSection(cost: cost)
+                    }
+                    if let activity, !activity.sessions.isEmpty {
                         SessionList(summary: activity, now: now, cap: sessionCap)
                     }
                 }
+
                 // An identity, so one provider's rows are never interpolated
                 // into another's — that is what slid text through positions
                 // belonging to neither layout. A crossfade rather than an

@@ -41,6 +41,7 @@ struct NotchRootView: View {
                     TooltipCard(
                         snapshot: snapshot,
                         activity: model.activity(for: snapshot.id),
+                        cost: model.costs[snapshot.id],
                         now: model.now,
                         direction: model.edge.tooltipDirection,
                         sessionCap: model.sessionCap
@@ -105,7 +106,8 @@ struct NotchRootView: View {
             ProviderCell(
                 snapshot: snapshot,
                 activity: model.activity(for: snapshot.id),
-                isRefreshing: model.refreshing.contains(snapshot.id)
+                isRefreshing: model.refreshing.contains(snapshot.id),
+                metricStyle: model.metricStyle
             )
                 // Pinned to what the cell claims along the stack, or the drawn
                 // rings stop lining up with the centres `ringCenter` hands to
@@ -189,12 +191,15 @@ struct NotchRootView: View {
         let card = model.edge.isVertical
             ? NotchLayout.cardWidth
             : NotchLayout.cardHeight(
-                windowCount: snapshot.windows.count,
+                windows: snapshot.windows,
                 sessionCount: model.activity(for: snapshot.id)?.sessions.count ?? 0,
                 sessionCap: model.sessionCap,
                 statusMessage: snapshot.statusMessage,
-                blockMessage: snapshot.block?.summary(now: model.now)
+                blockMessage: snapshot.block?.summary(now: model.now),
+                costLineCount: model.costs[snapshot.id]?.lineCount ?? 0,
+                now: model.now
             )
+
         return place.point(
             along: model.slack + model.ringCenter(index: index),
             across: model.tooltipInset + (NotchLayout.tailLength + card) / 2

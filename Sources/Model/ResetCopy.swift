@@ -18,6 +18,7 @@ enum ResetCopy {
         let formatter = DateFormatter()
         formatter.calendar = calendar
         formatter.locale = .current
+        formatter.timeZone = calendar.timeZone
 
         // A weekday only identifies a day inside the coming week. Codex's
         // monthly window resets 26 days out, and "Resets Mon 3:55 PM" read as

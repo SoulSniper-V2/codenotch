@@ -47,6 +47,14 @@ enum NotchLayout {
     static let pillHeight = Design.px(210)
     /// The pill is small, so the region that wakes it is deliberately larger.
     static let pillHotZone = Design.px(90)
+    /// How far past the drawn resting shape the wake region reaches.
+    ///
+    /// Barely past it, on purpose: a generous band here opens the notch while
+    /// the pointer is still on its way somewhere else — a scrollbar, a resize
+    /// handle, the Dock — and "it opened before I touched it" is exactly what
+    /// that reads as. The pill is small, but reaching for it should still mean
+    /// reaching *for it*.
+    static let wakeMargin = Design.px(16)
 
     // A provider cell
     static let ringDiameter  = Design.px(117)   // 44pt, the design spec's anchor
@@ -128,6 +136,14 @@ enum NotchLayout {
     static let headerToBlock = Design.px(21)
     static let labelToBar    = Design.px(16.8)
     static let barToUsed     = Design.px(17.8)
+    /// Gap between the "% Used · % left" line and the pace estimate below it
+    /// ("N% in deficit · Runs out in X"). Tighter than the other gaps: the
+    /// pace is a reading of the same bar, not a new section.
+    static let paceToUsed    = Design.px(8)
+    /// Gap between the limit windows and the token/cost section. A full
+    /// section gap: tokens answer a different question than the quota bars.
+    static let costToWindows  = Design.px(20)
+    static let costRowGap     = Design.px(10)
     static let blockSpacing  = Design.px(20)
     static let sessionRowGap = Design.px(10)   // the two lines of one session
     /// The spinner beside a session's status. Sized against the body text's cap
@@ -268,13 +284,67 @@ enum NotchLayout {
         bodyLength(cellCount: cellCount, edge: edge) + 2 * flare
     }
 
+    /// The tooltip's exact height for a given list of limit windows, live
+    /// sessions, and cost summary, only allocating vertical space for pace
+    /// lines that are actually rendered.
+    static func cardHeight(windows: [LimitWindow],
+                           sessionCount: Int = 0,
+                           sessionCap: Int = defaultSessionCap,
+                           statusMessage: String? = nil,
+                           blockMessage: String? = nil,
+                           costLineCount: Int = 0,
+                           now: Date = Date()) -> CGFloat {
+        let header = max(glyphSize, cardTitleLineHeight)
+        var height = 2 * cardPadding + header
+
+        if let blockMessage {
+            height += headerToBlock + bodyTextHeight(blockMessage)
+        }
+
+        if !windows.isEmpty {
+            for (index, window) in windows.enumerated() {
+                height += (index == 0 ? headerToBlock : blockSpacing)
+                height += cardBodyLineHeight
+                if window.usedFraction != nil {
+                    height += labelToBar + barHeight
+                }
+                height += barToUsed + cardBodyLineHeight
+                if PaceText.line(for: window, now: now) != nil {
+                    height += paceToUsed + cardBodyLineHeight
+                }
+            }
+        } else {
+            height += headerToBlock + bodyTextHeight(statusMessage ?? "")
+        }
+
+        if costLineCount > 0 {
+            height += costToWindows
+                + CGFloat(costLineCount) * cardBodyLineHeight
+                + CGFloat(costLineCount - 1) * costRowGap
+        }
+
+        if sessionCount > 0 {
+            let shown = min(sessionCount, max(0, sessionCap))
+            let row = 2 * cardBodyLineHeight + sessionRowGap
+            height += blockSpacing + hairline + blockSpacing
+                + CGFloat(shown) * row
+                + CGFloat(max(0, shown - 1)) * blockSpacing
+            if sessionCount > shown {
+                height += blockSpacing + cardBodyLineHeight
+            }
+        }
+        return height
+    }
+
     /// The tooltip's height for a given number of limit windows and live
     /// sessions. Worked out here rather than left to SwiftUI so the hover region
     /// can be computed before the card is ever laid out.
     static func cardHeight(windowCount: Int, sessionCount: Int = 0,
                            sessionCap: Int = defaultSessionCap,
                            statusMessage: String? = nil,
-                           blockMessage: String? = nil) -> CGFloat {
+                           blockMessage: String? = nil,
+                           costLineCount: Int = 0) -> CGFloat {
+
         let header = max(glyphSize, cardTitleLineHeight)
         var height = 2 * cardPadding + header
 
@@ -285,13 +355,25 @@ enum NotchLayout {
         }
 
         if windowCount > 0 {
-            let block = 2 * cardBodyLineHeight + labelToBar + barHeight + barToUsed
+            // One window block: label row + bar + "% Used · % left" row + the
+            // CodexBar pace line ("N% in deficit · Runs out in X"). The pace
+            // is always budgeted even when a fresh window hides it, so the
+            // card never clips the line the moment it appears.
+            let block = 3 * cardBodyLineHeight + labelToBar + barHeight + barToUsed + paceToUsed
             height += headerToBlock
                 + CGFloat(windowCount) * block
                 + CGFloat(windowCount - 1) * blockSpacing
         } else {
             // The status message, at whatever height it actually wraps to.
             height += headerToBlock + bodyTextHeight(statusMessage ?? "")
+        }
+
+        if costLineCount > 0 {
+            // The token/cost receipt ("Tokens today · 2.1M · ~$1.24"), always
+            // budgeted in full when the provider keeps logs.
+            height += costToWindows
+                + CGFloat(costLineCount) * cardBodyLineHeight
+                + CGFloat(costLineCount - 1) * costRowGap
         }
 
         if sessionCount > 0 {
@@ -356,14 +438,16 @@ enum NotchLayout {
     /// is a sum of a dozen named parts, and an inverted copy of it would have
     /// to be kept in step by hand. The range is short enough that the search
     /// costs nothing.
-    static func sessionsFitting(cardBudget: CGFloat, windowCount: Int) -> Int {
+    static func sessionsFitting(cardBudget: CGFloat, windowCount: Int,
+                                costLineCount: Int = maxCostLineCount) -> Int {
         var fits = 0
         for n in 1...sessionCeiling {
             // Costed as though something were still hidden, so that admitting
             // the nth row can never be what pushes the summary line off the
             // bottom of the card.
             let height = cardHeight(windowCount: windowCount,
-                                    sessionCount: n + 1, sessionCap: n)
+                                    sessionCount: n + 1, sessionCap: n,
+                                    costLineCount: costLineCount)
             guard height <= cardBudget else { break }
             fits = n
         }
@@ -386,8 +470,14 @@ enum NotchLayout {
     /// solved for.
     static func maxCardHeight(sessionCap: Int) -> CGFloat {
         cardHeight(windowCount: maxWindowCount,
-                   sessionCount: sessionCap + 1, sessionCap: sessionCap)
+                   sessionCount: sessionCap + 1, sessionCap: sessionCap,
+                   // The tallest card belongs to a provider with logs: budget
+                   // its token/cost receipt too, or the panel clips it.
+                   costLineCount: maxCostLineCount)
     }
+
+    /// Rows in the token/cost receipt: today + last 30 days.
+    static let maxCostLineCount = 2
 
     static let defaultMaxCardHeight = maxCardHeight(sessionCap: defaultSessionCap)
 

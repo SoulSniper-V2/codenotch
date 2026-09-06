@@ -20,12 +20,14 @@ struct ProviderRing: View {
     var activity: ActivitySummary?
     /// A fetch this cell asked for, in flight.
     var isRefreshing: Bool = false
+    /// The true consumption fraction used for health coloring, regardless of display sweep.
+    var bandFraction: Double? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var spin: Double = 0
 
     private var band: UsageBand {
-        isBlocked ? .exhausted : UsageBand.band(for: usedFraction ?? 0)
+        isBlocked ? .exhausted : UsageBand.band(for: bandFraction ?? usedFraction ?? 0)
     }
     private var sweep: CGFloat { CGFloat(min(max(usedFraction ?? 0, 0), 1)) }
 
@@ -159,21 +161,23 @@ struct ProviderCell: View {
     let snapshot: ProviderSnapshot
     var activity: ActivitySummary?
     var isRefreshing: Bool = false
+    var metricStyle: MetricDisplayMode = .used
 
     /// A dash, not "0%": nothing read is not the same as nothing used.
     private var percentText: String {
-        snapshot.hasReading ? snapshot.headlineText : "—"
+        snapshot.hasReading ? snapshot.headlineText(for: metricStyle) : "—"
     }
 
     var body: some View {
         VStack(spacing: NotchLayout.ringLabelGap) {
             ProviderRing(
-                usedFraction: snapshot.hasReading ? snapshot.ringFraction : nil,
+                usedFraction: snapshot.hasReading ? snapshot.ringFraction(for: metricStyle) : nil,
                 glyph: snapshot.glyph,
                 isStale: snapshot.status.isStale || !snapshot.hasReading,
                 isBlocked: snapshot.block != nil,
                 activity: activity,
-                isRefreshing: isRefreshing
+                isRefreshing: isRefreshing,
+                bandFraction: snapshot.usedFraction
             )
             Text(percentText)
                 .font(Typography.percent)

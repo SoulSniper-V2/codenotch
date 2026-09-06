@@ -9,6 +9,10 @@ final class UsageStore: ObservableObject {
     @Published private(set) var snapshots: [ProviderSnapshot] = []
     /// Providers with a fetch in flight, so the cell can show it happening.
     @Published private(set) var refreshing: Set<String> = []
+    /// Token/cost estimates from local logs, keyed by provider. Only Codex and
+    /// Claude keep logs worth reading; other providers simply have no entry.
+    @Published private(set) var costs: [String: CostSummary] = [:]
+    private let tokenCosts = TokenCostStore()
 
     private let providers: [UsageProvider]
     /// Providers the user has switched off. They are not fetched at all — their
@@ -49,6 +53,7 @@ final class UsageStore: ObservableObject {
     /// never depends on when the task body happens to start.
     private var isRefreshing = false
     private var wakeObserver: NSObjectProtocol?
+    private var refreshObserver: NSObjectProtocol?
 
     init(
         providers: [UsageProvider],
@@ -116,6 +121,18 @@ final class UsageStore: ObservableObject {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshNow() }
         }
+
+        refreshObserver = NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("CodenotchRefreshProvider"), object: nil, queue: .main
+        ) { [weak self] note in
+            MainActor.assumeIsolated {
+                if let providerID = note.object as? String {
+                    self?.refresh(providerID: providerID)
+                } else {
+                    self?.refreshNow()
+                }
+            }
+        }
     }
 
     func stop() {
@@ -127,6 +144,10 @@ final class UsageStore: ObservableObject {
         if let wakeObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
             self.wakeObserver = nil
+        }
+        if let refreshObserver {
+            NotificationCenter.default.removeObserver(refreshObserver)
+            self.refreshObserver = nil
         }
     }
 
@@ -173,6 +194,13 @@ final class UsageStore: ObservableObject {
             next.append(await snapshot(from: provider))
         }
         snapshots = next
+        // The ledger is throttled internally (15 min): this is usually a no-op
+        // that just republishes. Switched-off providers are neither scanned
+        // nor shown — off means unread, for logs as for endpoints.
+        await tokenCosts.refresh(disabledProviders: disconnected)
+        var fresh = tokenCosts.summaries
+        for id in disconnected { fresh.removeValue(forKey: id) }
+        costs = fresh
     }
 
     /// Refetch one provider, leaving the others alone.
@@ -197,6 +225,17 @@ final class UsageStore: ObservableObject {
             // that flashes for one frame reads as a glitch, not as a refresh.
             try? await Task.sleep(nanoseconds: 380_000_000)
             self.refreshing.remove(providerID)
+        }
+    }
+
+    /// Force a fresh rescan of local token ledgers (Claude, Codex).
+    func refreshLedger() {
+        Task { [weak self] in
+            guard let self else { return }
+            await self.tokenCosts.refresh(disabledProviders: self.disconnected, force: true)
+            var fresh = self.tokenCosts.summaries
+            for id in self.disconnected { fresh.removeValue(forKey: id) }
+            self.costs = fresh
         }
     }
 
