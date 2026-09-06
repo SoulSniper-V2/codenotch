@@ -187,22 +187,24 @@ actor ClaudeOAuthProvider: UsageProvider {
         )
     }
 
+    private static func decodeDate(from decoder: Decoder) throws -> Date {
+        let text = try decoder.singleValueContainer().decode(String.self)
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        if let date = withFraction.date(from: text) ?? plain.date(from: text) { return date }
+        throw DecodingError.dataCorrupted(
+            .init(codingPath: decoder.codingPath, debugDescription: "Unparseable date \(text)")
+        )
+    }
+
     private static let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         // Timestamps come back with fractional seconds and an offset, which
         // `.iso8601` alone will not parse.
-        let withFraction = ISO8601DateFormatter()
-        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
-        decoder.dateDecodingStrategy = .custom { decoder in
-            let text = try decoder.singleValueContainer().decode(String.self)
-            if let date = withFraction.date(from: text) ?? plain.date(from: text) { return date }
-            throw DecodingError.dataCorrupted(
-                .init(codingPath: decoder.codingPath, debugDescription: "Unparseable date \(text)")
-            )
-        }
+        decoder.dateDecodingStrategy = .custom { try ClaudeOAuthProvider.decodeDate(from: $0) }
         return decoder
     }()
 }
@@ -233,7 +235,8 @@ struct UsageResponse: Decodable {
                 id: limit.kind,
                 label: UsageResponse.label(forKind: limit.kind),
                 usedFraction: limit.percent / 100,
-                resetsAt: resetsAt
+                resetsAt: resetsAt,
+                windowMinutes: UsageResponse.minutes(forKind: limit.kind)
             )
         }
 
@@ -249,7 +252,8 @@ struct UsageResponse: Decodable {
             else { return }
             windows.append(LimitWindow(id: id, label: label,
                                        usedFraction: window.utilization / 100,
-                                       resetsAt: resetsAt))
+                                       resetsAt: resetsAt,
+                                       windowMinutes: UsageResponse.minutes(forKind: id)))
         }
         merge(fiveHour, id: "session", label: "Current session")
         merge(sevenDay, id: "weekly_all", label: "All models")
@@ -270,6 +274,13 @@ struct UsageResponse: Decodable {
                 .replacingOccurrences(of: "_", with: " ")
                 .capitalized
         }
+    }
+
+    /// Window length for pace math. Session is the 5h rolling window;
+    /// everything weekly is the 7d window.
+    static func minutes(forKind kind: String) -> Double {
+        if kind == "session" { return 300 }
+        return 10_080
     }
 
     /// Session first, then the weekly windows — the order the frame shows.

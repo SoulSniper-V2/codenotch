@@ -158,7 +158,8 @@ enum CodexBridge {
                     label: CodexUsage.label(windowMinutes: window.windowDurationMins,
                                             fallback: id),
                     usedFraction: percent / 100,
-                    resetsAt: window.resetsAt.map { Date(timeIntervalSince1970: $0) }
+                    resetsAt: window.resetsAt.map { Date(timeIntervalSince1970: $0) },
+                    windowMinutes: window.windowDurationMins
                 )
             }
     }

@@ -153,21 +153,72 @@ enum AntigravityBridge {
         else { return [] }
 
         return groups.flatMap { group -> [LimitWindow] in
-            (group.buckets ?? []).compactMap { bucket in
+            let sortedBuckets = (group.buckets ?? []).sorted { lhs, rhs in
+                quotaBucketSortRank(bucketId: lhs.bucketId, displayName: lhs.displayName)
+                    < quotaBucketSortRank(bucketId: rhs.bucketId, displayName: rhs.displayName)
+            }
+            return sortedBuckets.compactMap { bucket in
                 guard let remaining = bucket.remainingFraction,
                       remaining >= 0, remaining <= 1
                 else { return nil }
+                let windowId = bucket.bucketId ?? group.displayName ?? "quota"
+                let (cadenceLabel, minutes) = quotaBucketCadence(bucketId: bucket.bucketId, displayName: bucket.displayName)
+                let groupLabel = quotaGroupLabel(group.displayName)
+                let fullLabel = groupLabel.isEmpty ? cadenceLabel : "\(groupLabel) · \(cadenceLabel)"
                 return LimitWindow(
-                    id: bucket.bucketId ?? group.displayName ?? "quota",
-                    // The group names the models; the bucket only ever says
-                    // "Weekly Limit Remaining", which is the same for both.
-                    label: group.displayName ?? bucket.displayName ?? "Usage",
+                    id: windowId,
+                    label: fullLabel,
                     usedFraction: 1 - remaining,
-                    resetsAt: bucket.resetTime.flatMap(AntigravityCredentials.parse)
+                    resetsAt: bucket.resetTime.flatMap(AntigravityCredentials.parse),
+                    windowMinutes: minutes
                 )
             }
         }
     }
+
+    private static func quotaGroupLabel(_ raw: String?) -> String {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return ""
+        }
+        let lower = raw.lowercased()
+        if lower.contains("gemini") { return "Gemini" }
+        if lower.contains("claude") || lower.contains("gpt") { return "Claude/GPT" }
+        return raw
+    }
+
+    private static func quotaBucketCadence(bucketId: String?, displayName: String?) -> (String, Double?) {
+        let candidates = [bucketId ?? "", displayName ?? ""].map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }
+        for c in candidates {
+            if c.contains("5h") || c.contains("5-hour") || c.contains("five hour") || c.contains("five-hour") || c.contains("session") {
+                return ("5-hour limit", 300)
+            }
+            if c.contains("weekly") || c.contains("week") || c.contains("7d") {
+                return ("Weekly limit", 10080)
+            }
+        }
+        if let d = displayName, !d.isEmpty {
+            return (d, nil)
+        }
+        return ("Limit", nil)
+    }
+
+    private static func quotaBucketSortRank(bucketId: String?, displayName: String?) -> Int {
+        let candidates = [bucketId ?? "", displayName ?? ""].map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }
+        for c in candidates {
+            if c.contains("5h") || c.contains("5-hour") || c.contains("five hour") || c.contains("five-hour") || c.contains("session") {
+                return 0
+            }
+            if c.contains("weekly") || c.contains("week") || c.contains("7d") {
+                return 1
+            }
+        }
+        return 2
+    }
+
 
     // MARK: - Plumbing
 

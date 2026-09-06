@@ -17,7 +17,7 @@ import os
 /// persistent store. Nothing is taken from Chrome or Safari, no fingerprint is
 /// faked, and a challenge is only ever answered by the person sitting there.
 @MainActor
-final class WebSessionProvider: NSObject, UsageProvider {
+final class WebSessionProvider: NSObject, @preconcurrency UsageProvider {
     /// Everything site-specific, so the browser plumbing is written once.
     struct Site {
         let id: String

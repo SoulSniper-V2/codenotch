@@ -100,8 +100,6 @@ actor AntigravityProvider: UsageProvider {
         }
         guard status == 200 else { throw UsageProviderError.badResponse(status: status) }
 
-        let tier = Self.tier(in: data)
-
         // Antigravity's own language server first: it holds the client identity
         // Google insists on, and answers with the same figure the app's own
         // usage panel shows.
@@ -230,6 +228,8 @@ actor AntigravityProvider: UsageProvider {
                                resetsAt: bucket.resetTime.flatMap(AntigravityCredentials.parse))
         }
     }
+
+
 
     /// The plan's display name, for the message the cell shows.
     static func tier(in data: Data) -> String {

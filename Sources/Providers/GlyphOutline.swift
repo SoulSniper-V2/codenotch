@@ -389,8 +389,51 @@ enum GlyphOutline {
          CGPoint(x: 0.7365, y: 0.7472), CGPoint(x: 0.7502, y: 0.7696), CGPoint(x: 0.7647, y: 0.7921),
          CGPoint(x: 0.7802, y: 0.8146), CGPoint(x: 0.7970, y: 0.8369), CGPoint(x: 0.8153, y: 0.8588),
          CGPoint(x: 0.8351, y: 0.8802), CGPoint(x: 0.8568, y: 0.9009), CGPoint(x: 0.8804, y: 0.9208),
-         CGPoint(x: 0.9063, y: 0.9397), CGPoint(x: 0.9063, y: 0.9397)
-        ]
+          CGPoint(x: 0.9063, y: 0.9397), CGPoint(x: 0.9063, y: 0.9397)
+         ]
+     ]
+
+    /// Grok's X, drawn rather than traced: two diagonal bars in a unit box.
+    /// Symmetric, so it reads identically on every edge. Like `cursor`, this is
+    /// a placeholder for a real vector export — dropping a `glyph-grok`
+    /// PDF/SVG into the asset catalogue makes `ProviderGlyphView` prefer it.
+    static let grok: [[CGPoint]] = [
+        [CGPoint(x: 0.10, y: 0.06), CGPoint(x: 0.34, y: 0.06),
+         CGPoint(x: 0.90, y: 0.94), CGPoint(x: 0.66, y: 0.94)],
+        [CGPoint(x: 0.66, y: 0.06), CGPoint(x: 0.90, y: 0.06),
+         CGPoint(x: 0.34, y: 0.94), CGPoint(x: 0.10, y: 0.94)],
     ]
 
+    /// GitHub Copilot fallback outline.
+    static let copilot: [[CGPoint]] = [
+        [CGPoint(x: 0.20, y: 0.20), CGPoint(x: 0.80, y: 0.20),
+         CGPoint(x: 0.90, y: 0.50), CGPoint(x: 0.80, y: 0.80),
+         CGPoint(x: 0.50, y: 0.90), CGPoint(x: 0.20, y: 0.80),
+         CGPoint(x: 0.10, y: 0.50)],
+        [CGPoint(x: 0.35, y: 0.55), CGPoint(x: 0.45, y: 0.55),
+         CGPoint(x: 0.45, y: 0.70), CGPoint(x: 0.35, y: 0.70)],
+        [CGPoint(x: 0.55, y: 0.55), CGPoint(x: 0.65, y: 0.55),
+         CGPoint(x: 0.65, y: 0.70), CGPoint(x: 0.55, y: 0.70)]
+    ]
+
+    /// OpenRouter fallback outline (two routing paths with arrowheads).
+    static let openrouter: [[CGPoint]] = [
+        [CGPoint(x: 0.10, y: 0.30), CGPoint(x: 0.70, y: 0.30),
+         CGPoint(x: 0.65, y: 0.20), CGPoint(x: 0.90, y: 0.35),
+         CGPoint(x: 0.65, y: 0.50), CGPoint(x: 0.70, y: 0.40),
+         CGPoint(x: 0.10, y: 0.40)],
+        [CGPoint(x: 0.10, y: 0.70), CGPoint(x: 0.70, y: 0.70),
+         CGPoint(x: 0.65, y: 0.60), CGPoint(x: 0.90, y: 0.75),
+         CGPoint(x: 0.65, y: 0.90), CGPoint(x: 0.70, y: 0.80),
+         CGPoint(x: 0.10, y: 0.80)]
+    ]
+
+    /// DeepSeek fallback outline (whale silhouette).
+    static let deepseek: [[CGPoint]] = [
+        [CGPoint(x: 0.15, y: 0.50), CGPoint(x: 0.30, y: 0.25),
+         CGPoint(x: 0.65, y: 0.25), CGPoint(x: 0.85, y: 0.40),
+         CGPoint(x: 0.95, y: 0.30), CGPoint(x: 0.88, y: 0.55),
+         CGPoint(x: 0.80, y: 0.75), CGPoint(x: 0.40, y: 0.85),
+         CGPoint(x: 0.20, y: 0.75)]
+    ]
 }

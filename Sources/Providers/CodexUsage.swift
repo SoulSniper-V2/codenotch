@@ -110,7 +110,8 @@ enum CodexUsage {
             id: id,
             label: label(windowMinutes: minutes, fallback: id),
             usedFraction: percent / 100,
-            resetsAt: resetsAt
+            resetsAt: resetsAt,
+            windowMinutes: minutes
         )
     }
 

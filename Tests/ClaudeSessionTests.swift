@@ -12,7 +12,7 @@ final class ClaudeSessionRecordTests: XCTestCase {
     /// A real file, trimmed. Unknown keys must not cost us the session.
     func testDecodesALiveSession() throws {
         let s = try XCTUnwrap(session("""
-        { "pid": 2678, "sessionId": "c85d4247", "cwd": "/Users/vinz/usage-notch",
+        { "pid": 2678, "sessionId": "c85d4247", "cwd": "/Users/developer/usage-notch",
           "startedAt": 1787894126697, "procStart": "Fri Aug 28 05:15:20 2026",
           "kind": "interactive", "entrypoint": "cli", "name": "usage-notch-bc",
           "status": "busy", "statusUpdatedAt": 1787897225305,
@@ -50,7 +50,7 @@ final class ClaudeSessionRecordTests: XCTestCase {
 
     func testFallsBackToTheFolderWhenUnnamed() throws {
         XCTAssertEqual(try XCTUnwrap(session("""
-        { "pid": 1, "cwd": "/Users/vinz/notch-app", "status": "idle" }
+        { "pid": 1, "cwd": "/Users/developer/notch-app", "status": "idle" }
         """)).name, "notch-app")
     }
 

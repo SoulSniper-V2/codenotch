@@ -1,5 +1,4 @@
 import XCTest
-import Sparkle
 @testable import Codenotch
 
 /// Fixtures are the real thing: the keychain payload's shape and the actual
@@ -298,13 +297,43 @@ final class AntigravityBridgeTests: XCTestCase {
         XCTAssertEqual(windows.count, 2)
         XCTAssertEqual(windows[0].id, "gemini-weekly")
         XCTAssertEqual(windows[0].usedFraction ?? 0, 1 - 0.96262, accuracy: 0.00001)
-        XCTAssertEqual(windows[0].label, "Gemini Models")
+        XCTAssertEqual(windows[0].label, "Gemini · Weekly limit")
+        XCTAssertEqual(windows[0].windowMinutes, 10080)
+        XCTAssertEqual(windows[1].label, "Claude/GPT · Weekly limit")
+    }
+
+    func testItDistinguishesFiveHourAndWeeklyLimits() {
+        let json = Data("""
+        {"response":{"groups":[
+          {"displayName":"Gemini Models",
+           "buckets":[
+             {"bucketId":"gemini-weekly","displayName":"Weekly Limit","remainingFraction":0.7},
+             {"bucketId":"gemini-5h","displayName":"Five Hour Limit","remainingFraction":0.9}
+           ]},
+          {"displayName":"Claude and GPT models",
+           "buckets":[
+             {"bucketId":"3p-weekly","displayName":"Weekly Limit","remainingFraction":0.8},
+             {"bucketId":"3p-5h","displayName":"Five Hour Limit","remainingFraction":0.95}
+           ]}
+        ]}}
+        """.utf8)
+        let windows = AntigravityBridge.windows(in: json)
+        XCTAssertEqual(windows.count, 4)
+        XCTAssertEqual(windows.map(\.id), ["gemini-5h", "gemini-weekly", "3p-5h", "3p-weekly"])
+        XCTAssertEqual(windows.map(\.label), [
+            "Gemini · 5-hour limit",
+            "Gemini · Weekly limit",
+            "Claude/GPT · 5-hour limit",
+            "Claude/GPT · Weekly limit",
+        ])
+        XCTAssertEqual(windows.map(\.windowMinutes), [300, 10080, 300, 10080])
     }
 
     /// A full bucket is 0% used, not "no reading".
     func testAnUntouchedLimitIsZeroUsed() {
         XCTAssertEqual(AntigravityBridge.windows(in: real)[1].usedFraction, 0)
     }
+
 
     func testItKeepsTheResetTime() throws {
         let resets = try XCTUnwrap(AntigravityBridge.windows(in: real)[0].resetsAt)
@@ -355,8 +384,8 @@ final class AntigravityBridgeTests: XCTestCase {
 
     func testItParsesPortsFromLSOF() {
         let output = """
-        language_server 29283 vinz 12u IPv4 0x1 0t0 TCP 127.0.0.1:63881 (LISTEN)
-        language_server 29283 vinz 13u IPv4 0x2 0t0 TCP 127.0.0.1:63882 (LISTEN)
+        language_server 29283 developer 12u IPv4 0x1 0t0 TCP 127.0.0.1:63881 (LISTEN)
+        language_server 29283 developer 13u IPv4 0x2 0t0 TCP 127.0.0.1:63882 (LISTEN)
         """
         XCTAssertEqual(AntigravityBridge.parsePorts(fromLSOF: output), [63881, 63882])
     }
@@ -620,10 +649,10 @@ final class FirstRunCopyTests: XCTestCase {
         defaults.removePersistentDomain(forName: name)
         return SettingsView(preferences: Preferences(defaults: defaults),
                             providers: { [] },
+                            version: "1.3.0",
                             signOut: { _ in }, signIn: { _ in true },
                             switchAccount: { _ in true },
-                            retry: { _ in },
-                            updater: Updater())
+                            retry: { _ in })
     }
 
     /// The setup note has to name the tools. "Tools already signed in on this
@@ -673,15 +702,6 @@ final class AntigravityFallbackTests: XCTestCase {
         guard case .unsupported = status else {
             return XCTFail("expected unsupported, got \(status)")
         }
-    }
-}
-
-final class AuthorCreditTests: XCTestCase {
-    /// Pinned because a wrong handle in a credit is worse than none, and it is
-    /// the kind of string nobody re-reads once it looks right.
-    func testTheCreditPointsAtTheRightAccount() {
-        XCTAssertEqual(SettingsView.authorURL.absoluteString, "https://x.com/hivinz_")
-        XCTAssertEqual(SettingsView.authorURL.scheme, "https")
     }
 }
 
@@ -741,42 +761,6 @@ final class AppPresenceTests: XCTestCase {
         defaults.removePersistentDomain(forName: name)
         Preferences(defaults: defaults).appPresence = .menuBar
         XCTAssertEqual(Preferences(defaults: defaults).appPresence, .menuBar)
-    }
-}
-
-/// What the settings sheet says after a check. Sparkle's own answer to a failed
-/// one is a modal reading "an error occurred in retrieving update information",
-/// which names no cause and offers nothing to do — so the outcome is kept and
-/// worded here instead.
-@MainActor
-final class UpdateOutcomeTests: XCTestCase {
-    /// The case people actually hit, and the one that most needs reassuring:
-    /// nothing is wrong with their copy of the app.
-    func testAnUnreachableFeedSaysSoWithoutBlamingTheApp() throws {
-        let message = try XCTUnwrap(Updater.Outcome.unreachable.message)
-        XCTAssertTrue(message.contains("Couldn't reach"))
-        XCTAssertTrue(message.contains("nothing is wrong with this copy"))
-        XCTAssertFalse(message.lowercased().contains("error occurred"))
-    }
-
-    func testEveryOutcomeExceptIdleSaysSomething() {
-        XCTAssertNil(Updater.Outcome.idle.message)
-        for outcome: Updater.Outcome in [.checking, .upToDate(Date()), .found("1.1.0"),
-                                         .unreachable, .failed("disk full")] {
-            XCTAssertNotNil(outcome.message, "\(outcome) says nothing")
-        }
-    }
-
-    func testAFoundUpdateNamesTheVersion() throws {
-        let message = try XCTUnwrap(Updater.Outcome.found("1.2.0").message)
-        XCTAssertTrue(message.contains("1.2.0"))
-    }
-
-    /// The distinction the wording depends on: a feed that cannot be fetched is
-    /// routine, anything else is reported as itself.
-    func testOnlyAFeedFailureCountsAsUnreachable() {
-        XCTAssertTrue(Updater.isUnreachable(Int(SUError.appcastError.rawValue)))
-        XCTAssertFalse(Updater.isUnreachable(Int(SUError.installationError.rawValue)))
     }
 }
 

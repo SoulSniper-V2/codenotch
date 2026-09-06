@@ -27,6 +27,7 @@ enum CursorUsage {
         else { throw UsageProviderError.badResponse(status: 0) }
 
         let resetsAt = date(root["billingCycleEnd"])
+        let cycleMinutes = Self.minutesBetween(date(root["billingCycleStart"]), resetsAt)
         let usage = root["individualUsage"] as? [String: Any] ?? [:]
         let plan = usage["plan"] as? [String: Any] ?? [:]
 
@@ -43,15 +44,18 @@ enum CursorUsage {
         // that had genuinely just been switched.
         if let total = percent(plan["totalPercentUsed"]) {
             windows.append(LimitWindow(id: "included", label: "Included usage",
-                                       usedFraction: total, resetsAt: resetsAt))
+                                       usedFraction: total, resetsAt: resetsAt,
+                                       windowMinutes: cycleMinutes))
         }
         // Reported separately by Cursor, and can be far ahead of the total.
         if let api = percent(plan["apiPercentUsed"]), api > 0 {
             windows.append(LimitWindow(id: "api", label: "API usage",
-                                       usedFraction: api, resetsAt: resetsAt))
+                                       usedFraction: api, resetsAt: resetsAt,
+                                       windowMinutes: cycleMinutes))
         }
         if let onDemand = spendWindow(usage["onDemand"], id: "on_demand",
-                                      label: "On demand", resetsAt: resetsAt) {
+                                      label: "On demand", resetsAt: resetsAt,
+                                      windowMinutes: cycleMinutes) {
             windows.append(onDemand)
         }
 
@@ -66,14 +70,26 @@ enum CursorUsage {
 
     /// A dollar-denominated bucket, used where a plan states a real ceiling.
     private static func spendWindow(
-        _ any: Any?, id: String, label: String, resetsAt: Date?
+        _ any: Any?, id: String, label: String, resetsAt: Date?,
+        windowMinutes: Double? = nil
     ) -> LimitWindow? {
         guard let bucket = any as? [String: Any],
               (bucket["enabled"] as? Bool) == true,
               let limit = (bucket["limit"] as? NSNumber)?.doubleValue, limit > 0,
               let used = (bucket["used"] as? NSNumber)?.doubleValue
         else { return nil }
-        return LimitWindow(id: id, label: label, usedFraction: used / limit, resetsAt: resetsAt)
+        return LimitWindow(id: id, label: label, usedFraction: used / limit,
+                           resetsAt: resetsAt, windowMinutes: windowMinutes)
+    }
+
+    /// Billing-cycle length in minutes for pace math. Falls back to a 30d
+    /// month when the cycle bounds are missing.
+    private static func minutesBetween(_ start: Date?, _ end: Date?) -> Double {
+        if let start, let end, end > start {
+            let minutes = end.timeIntervalSince(start) / 60
+            if minutes > 0 { return minutes }
+        }
+        return 43_200
     }
 
     /// Cursor reports 0–100; the rest of the app works in 0–1.
