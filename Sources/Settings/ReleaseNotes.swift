@@ -31,6 +31,28 @@ struct ReleaseNote: Equatable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "1.3.4",
+            headline: "Global shortcut peek, quota reset notifications, and 14-day spend history.",
+            changes: [
+                ReleaseNote.Change(
+                    title: "Global keyboard shortcut",
+                    detail: "Press ⌃⌥Space anytime from anywhere to peek or fold the notch without needing Accessibility permissions."
+                ),
+                ReleaseNote.Change(
+                    title: "Quota reset & low-quota alerts",
+                    detail: "Optional macOS notification banners when your limits run low and the moment full capacity is restored."
+                ),
+                ReleaseNote.Change(
+                    title: "14-day spend history chart",
+                    detail: "Interactive daily token and cost bar chart in Settings, aggregated across local Claude Code and Codex sessions."
+                ),
+                ReleaseNote.Change(
+                    title: "Celebration effects",
+                    detail: "Ambient confetti burst celebrating when an exhausted quota resets."
+                ),
+            ]
+        ),
+        ReleaseNote(
             version: "1.3.3",
             headline: "A calmer settings window with fresh readings when you open it.",
             changes: [
