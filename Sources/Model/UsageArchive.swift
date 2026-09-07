@@ -32,19 +32,30 @@ struct UsageArchive {
     /// request immediately — so a development loop of `make run` walks straight
     /// into the rate limit it is being punished by, and keeps the punishment
     /// alive. Which is exactly what happened.
-    func loadBackoffUntil() -> Date? {
-        guard let date = defaults.object(forKey: backoffKey) as? Date, date > Date() else {
+    ///
+    /// Kept per provider: the limit is per account, so a work profile being
+    /// told to slow down says nothing about the personal one. The default
+    /// profile keeps the key it always had, so a penalty in progress survives
+    /// the update.
+    func loadBackoffUntil(providerID: String = ClaudeProfile.defaultID) -> Date? {
+        guard let date = defaults.object(forKey: backoffKey(for: providerID)) as? Date,
+              date > Date() else {
             return nil
         }
         return date
     }
 
-    func saveBackoffUntil(_ date: Date?) {
+    func saveBackoffUntil(_ date: Date?, providerID: String = ClaudeProfile.defaultID) {
+        let key = backoffKey(for: providerID)
         if let date {
-            defaults.set(date, forKey: backoffKey)
+            defaults.set(date, forKey: key)
         } else {
-            defaults.removeObject(forKey: backoffKey)
+            defaults.removeObject(forKey: key)
         }
+    }
+
+    private func backoffKey(for providerID: String) -> String {
+        providerID == ClaudeProfile.defaultID ? backoffKey : "\(backoffKey).\(providerID)"
     }
 
     func load() -> [String: (snapshot: ProviderSnapshot, fetchedAt: Date)] {

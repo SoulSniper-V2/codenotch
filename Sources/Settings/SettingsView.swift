@@ -371,12 +371,11 @@ private struct AccountRow: View {
                 // if the browser is not signed in. Sending someone to a login
                 // screen from a row that says "connected" is the wrong answer
                 // whenever the real thing is one launch away.
-                // The way back from a declined keychain prompt, and the only
-                // one: declining is easy to do by reflex, and nothing else on
-                // screen will ask macOS again. Shown for providers whose
-                // credential actually lives in the keychain — for the others
-                // there is no prompt to raise.
-                if isConnected, provider.usesKeychain {
+                // Shown only while macOS is actually refusing. It used to be
+                // permanent for any keychain-backed provider, which meant it sat
+                // there next to a working account offering to fix nothing — and
+                // when it *was* needed there was no way to tell the two apart.
+                if isConnected, provider.wasRefusedAccess {
                     Button("Allow access…") { retry(provider.id) }
                         .controlSize(.small)
                         .help("Asks macOS for \(provider.name)'s saved login again. "
@@ -428,6 +427,14 @@ private struct AccountRow: View {
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        } else if provider.wasRefusedAccess {
+            // Not a sign-in problem, so do not send them off to sign in. The
+            // credential is right there and macOS is the one saying no — the
+            // remedy is the button on this same row.
+            Text("macOS is not letting Codenotch read \(provider.name)'s saved "
+                 + "login. Choose Allow access… above, then Always Allow.")
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
         } else {
             HStack(spacing: 8) {
                 Text(provider.signIn.explanation)

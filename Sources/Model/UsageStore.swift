@@ -9,6 +9,9 @@ final class UsageStore: ObservableObject {
     @Published private(set) var snapshots: [ProviderSnapshot] = []
     /// Providers with a fetch in flight, so the cell can show it happening.
     @Published private(set) var refreshing: Set<String> = []
+    /// Providers whose last fetch was refused by macOS, cleared as soon as one
+    /// succeeds. The settings row's only honest basis for offering to ask again.
+    @Published private(set) var refusedAccess: Set<String> = []
     /// Token/cost estimates from local logs, keyed by provider. Only Codex and
     /// Claude keep logs worth reading; other providers simply have no entry.
     @Published private(set) var costs: [String: CostSummary] = [:]
@@ -40,6 +43,14 @@ final class UsageStore: ObservableObject {
 
     private let refreshInterval: TimeInterval
     /// How long a snapshot stays believable after its last successful fetch.
+    ///
+    /// Comfortably above `idleRefreshInterval`, on purpose. With the two equal,
+    /// a ring dimmed the instant the *first* idle refresh attempt failed —
+    /// which reads as "nothing is being read any more" when what actually
+    /// happened is one attempt, five minutes ago, out of what will keep being
+    /// tried every five minutes after. The margin buys room for a couple of
+    /// those attempts to have genuinely failed before the ring says so; it
+    /// must never fire merely because the idle schedule hasn't come round yet.
     private let staleAfter: TimeInterval
     /// How often to look when nothing is running.
     private let idleRefreshInterval: TimeInterval
@@ -59,7 +70,7 @@ final class UsageStore: ObservableObject {
         providers: [UsageProvider],
         refreshInterval: TimeInterval = 60,
         idleRefreshInterval: TimeInterval = 5 * 60,
-        staleAfter: TimeInterval = 5 * 60,
+        staleAfter: TimeInterval = 15 * 60,
         archive: UsageArchive = UsageArchive(),
         disconnected: Set<String> = []
     ) {
@@ -100,9 +111,11 @@ final class UsageStore: ObservableObject {
 
     /// Enough to list the providers in settings without exposing them.
     var providerSummaries: [ProviderSummary] {
-        providers.map {
-            ProviderSummary(id: $0.id, name: $0.displayName, glyph: $0.glyph,
-                            account: $0.account(), signIn: $0.signInRoute)
+        providers.map { provider in
+            ProviderSummary(id: provider.id, name: provider.displayName,
+                            glyph: provider.glyph, account: provider.account(),
+                            signIn: provider.signInRoute,
+                            wasRefusedAccess: refusedAccess.contains(provider.id))
         }
     }
 
@@ -333,6 +346,7 @@ final class UsageStore: ObservableObject {
             let fresh = try await provider.fetchSnapshot()
             lastGood[provider.id] = (fresh, Date())
             archive.save(lastGood)
+            refusedAccess.remove(provider.id)
             Log.usage.debug("\(provider.id, privacy: .public): \(fresh.windows.count) window(s)")
             return fresh
         } catch {
@@ -345,6 +359,18 @@ final class UsageStore: ObservableObject {
     /// one marked stale, or shows the cell with no reading at all.
     private func degraded(provider: UsageProvider, error: Error) -> ProviderSnapshot {
         let status = Self.status(for: error)
+
+        // Remembered apart from the snapshot on purpose. The snapshot answers
+        // "how good are the numbers I am showing", and for a refusal the honest
+        // answer is "still fine, just ageing" — which is why `supersedesHistory`
+        // keeps the old reading and its status. That deliberately loses the one
+        // fact the settings row needs: whether macOS let us in last time. Two
+        // different questions, so two different places to keep the answer.
+        if case .accessDenied = status {
+            refusedAccess.insert(provider.id)
+        } else {
+            refusedAccess.remove(provider.id)
+        }
 
         // Some failures are statements about the account rather than a hiccup:
         // signed out, or a plan that meters nothing. Re-showing an old reading
@@ -389,6 +415,11 @@ final class UsageStore: ObservableObject {
     /// Exposed for the tests: the store never invents a reading, so what a
     /// failure looks like is worth pinning down.
     static func statusForTesting(_ error: Error) -> ProviderStatus { status(for: error) }
+
+    /// Exposed so a test can hold the shipped defaults to the margin they are
+    /// supposed to keep, without re-typing the numbers on both sides.
+    var staleAfterForTesting: TimeInterval { staleAfter }
+    var idleRefreshIntervalForTesting: TimeInterval { idleRefreshInterval }
 
     private static func status(for error: Error) -> ProviderStatus {
         switch error {

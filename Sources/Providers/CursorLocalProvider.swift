@@ -22,7 +22,7 @@ actor CursorLocalProvider: UsageProvider {
         self.session = session
     }
 
-    nonisolated var signInRoute: SignInRoute { .openApp(bundleID: "com.todesktop.230313mzl4w4u92", name: "Cursor") }
+    nonisolated var signInRoute: SignInRoute { .openApp(bundleID: CursorCredentials.bundleID, name: "Cursor") }
 
     nonisolated func account() -> ProviderAccount? { CursorCredentials.account() }
 

@@ -15,10 +15,7 @@ enum ResetCopy {
             return "Resets in \(max(1, minutes)) min"
         }
 
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.locale = .current
-        formatter.timeZone = calendar.timeZone
+        let formatter = formatter(for: calendar)
 
         // A weekday only identifies a day inside the coming week. Codex's
         // monthly window resets 26 days out, and "Resets Mon 3:55 PM" read as
@@ -37,6 +34,21 @@ enum ResetCopy {
         // design frame and Claude's own usage panel write "4:50 PM".
         formatter.dateFormat = "E h:mm a"
         return "Resets \(formatter.string(from: resetsAt))"
+    }
+
+    /// A formatter that renders in the given calendar's own zone.
+    ///
+    /// Setting `calendar` does not carry its time zone across, and the formatter
+    /// otherwise falls back to the device's — so a date rendered against an
+    /// explicit calendar came out shifted by the difference. Shared because
+    /// `UsageBlock.summary` formats the same kind of vendor reset time from the
+    /// same kind of injected calendar, and had the same defect.
+    static func formatter(for calendar: Calendar) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = .current
+        return formatter
     }
 
     /// Whole days between two instants, counted by calendar day rather than by

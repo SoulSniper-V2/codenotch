@@ -22,6 +22,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             || NSClassFromString("XCTestCase") != nil
     }
 
+    /// Every Claude Code configuration directory on this Mac — `~/.claude` and
+    /// any `~/.claude-<slug>` — found once at launch. Each gets a usage
+    /// provider and a session monitor of its own, keyed by the same id, so a
+    /// work login's sessions spin the work ring and nobody else's.
+    private let claudeProfiles = ClaudeProfile.discover()
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Set here, not in the Info.plist: this call is applied at launch and
         // overrides `LSUIElement` either way. Removing the plist key alone left
@@ -62,14 +68,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // very first list it draws already excludes them. Constructed first,
             // it drew every provider from the archive and only dropped the
             // switched-off ones once the binding below delivered.
+            Log.usage.info("claude profiles: \(self.claudeProfiles.map(\.displayPath).joined(separator: ", "), privacy: .public)")
             let store = UsageStore(
-                providers: [ClaudeOAuthProvider(), CursorLocalProvider(),
-                            CodexLocalProvider(), AntigravityProvider(),
-                            GrokProvider(), CopilotProvider(),
-                            OpenRouterProvider(), DeepSeekProvider(),
-                            OpenAIProvider(), WindsurfProvider(),
-                            OllamaProvider(), GroqProvider(),
-                            MistralProvider(), PerplexityProvider()]
+                providers: claudeProfiles.map { ClaudeOAuthProvider(profile: $0) }
+                    + [CursorLocalProvider(), CodexLocalProvider(), AntigravityProvider(),
+                       GLMProvider(), GrokProvider(), CopilotProvider(),
+                       OpenRouterProvider(), DeepSeekProvider(),
+                       OpenAIProvider(), WindsurfProvider(),
+                       OllamaProvider(), GroqProvider(),
+                       MistralProvider(), PerplexityProvider()]
                     + webProviders,
                 disconnected: preferences.disconnectedProviders
             )
@@ -216,12 +223,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // What each agent is doing right now, so the notch can say whether it is
         // still working without you switching to it.
-        let monitors: [String: any AgentActivityMonitor] = [
-            "claude": ClaudeSessionMonitor(),
+        var monitors: [String: any AgentActivityMonitor] = [
             "cursor": CursorActivityMonitor(),
             "codex": CodexActivityMonitor(),
             "gemini": AntigravityActivityMonitor()
         ]
+        for profile in claudeProfiles {
+            monitors[profile.id] = ClaudeSessionMonitor(directory: profile.sessionsDirectory)
+        }
         for (id, monitor) in monitors {
             monitor.sessionsPublisher
                 .receive(on: RunLoop.main)

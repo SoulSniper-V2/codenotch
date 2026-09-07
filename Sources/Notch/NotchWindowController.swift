@@ -31,6 +31,7 @@ final class NotchWindowController {
     private var clearHoverWork: DispatchWorkItem?
     private var clockTimer: Timer?
     private var cursorTimer: Timer?
+    private var fadeTimer: Timer?
 
     /// Hover in is quick; hover out waits, because the pointer has to cross the
     /// gap between the notch and the card without the card vanishing under it.
@@ -87,6 +88,8 @@ final class NotchWindowController {
     func stop() {
         setPointing(false)
         foldWork?.cancel()
+        fadeTimer?.invalidate()
+        fadeTimer = nil
         cursorTimer?.invalidate()
         cursorTimer = nil
         clockTimer?.invalidate()
@@ -394,7 +397,18 @@ final class NotchWindowController {
     /// A click on a ring refetches that provider; a click anywhere else on the
     /// open notch pins it. The ring is the more specific target, so it wins.
     func handleClick() {
-        guard let panel, model.isExpanded else { return togglePinned() }
+        guard let panel, model.isExpanded else {
+            // Opens it, the same as the pointer arriving would — it must not
+            // also pin it. The pill's hot zone is deliberately generous, since
+            // it is a small target on a screen edge, so a click aimed at
+            // something else nearby can land here without the notch ever
+            // having been seen open. Pinning is what a click on a notch that
+            // is *already* open does; folding it back in later is exactly
+            // the ordinary hover behaviour, which a plain `setExpanded` leaves
+            // intact.
+            setExpanded(true)
+            return
+        }
         let local = localCursor(in: panel.frame)
 
         // The handle sits inside the notch, so it has to be tested before the
@@ -434,6 +448,7 @@ final class NotchWindowController {
         }
 
         let wasOpen = model.isExpanded
+        model.isExpanded = false
         model.hoveredIndex = nil
         setPointing(false)
 
@@ -443,34 +458,52 @@ final class NotchWindowController {
         edgeChange += 1
         let change = edgeChange
 
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = Self.edgeCrossfade
-            panel.animator().alphaValue = 0
-        } completionHandler: { [weak self] in
+        fadeTimer?.invalidate()
+        fadeTimer = nil
+
+        let start = Date()
+        let duration = Self.edgeCrossfade
+        panel.alphaValue = 0.95
+
+        let timer = Timer(timeInterval: 0.016, repeats: true) { [weak self] t in
             MainActor.assumeIsolated {
-                guard let self, let panel = self.panel, change == self.edgeChange else { return }
+                guard let self, let panel = self.panel, change == self.edgeChange else {
+                    t.invalidate()
+                    return
+                }
 
-                // Land folded, and at full strength: the opening *is* the
-                // animation, and fading in underneath it would be two at once.
-                self.model.edge = edge
-                self.model.isExpanded = false
-                self.relocate()
-                self.updateInteractiveRects()
-                panel.alphaValue = 1
+                let elapsed = Date().timeIntervalSince(start)
+                if elapsed >= duration {
+                    t.invalidate()
+                    self.fadeTimer = nil
 
-                guard wasOpen else { return }
-                // A beat, then open. Not decoration: setting it shut and open
-                // again inside one turn lets SwiftUI coalesce the pair, and the
-                // notch arrives at full size having animated nothing.
-                DispatchQueue.main.asyncAfter(deadline: .now() + Self.arrivalBeat) {
-                    MainActor.assumeIsolated {
-                        guard change == self.edgeChange else { return }
-                        withAnimation(NotchMotion.unfold) { self.model.isExpanded = true }
-                        self.updateInteractiveRects()
+                    // Land folded, and at full strength: the opening *is* the
+                    // animation, and fading in underneath it would be two at once.
+                    self.model.edge = edge
+                    self.model.isExpanded = false
+                    self.relocate()
+                    self.updateInteractiveRects()
+                    panel.alphaValue = 1
+
+                    guard wasOpen else { return }
+                    // A beat, then open. Not decoration: setting it shut and open
+                    // again inside one turn lets SwiftUI coalesce the pair, and the
+                    // notch arrives at full size having animated nothing.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + Self.arrivalBeat) {
+                        MainActor.assumeIsolated {
+                            guard change == self.edgeChange else { return }
+                            withAnimation(NotchMotion.unfold) { self.model.isExpanded = true }
+                            self.updateInteractiveRects()
+                        }
                     }
+                } else {
+                    panel.alphaValue = max(0, 1.0 - CGFloat(elapsed / duration))
                 }
             }
         }
+        RunLoop.current.add(timer, forMode: .default)
+        RunLoop.current.add(timer, forMode: .common)
+        fadeTimer = timer
     }
 
     /// Half the crossing, each way. Short: it is a settings change, not a

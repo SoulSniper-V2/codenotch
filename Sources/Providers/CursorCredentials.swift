@@ -19,6 +19,12 @@ struct CursorCredentials {
             .appendingPathComponent("Library/Application Support/Cursor/User/globalStorage/state.vscdb")
     }
 
+    /// Minted by ToDesktop, who build Cursor — stable across updates, but not
+    /// across Cursor leaving ToDesktop or rebranding. Kept here beside the store
+    /// path so the two facts about a Cursor installation change together: the
+    /// activity monitor and the sign-in route both read this one.
+    static let bundleID = "com.todesktop.230313mzl4w4u92"
+
     /// Identity, read from the same store as the session. Non-secret: the email
     /// and plan the editor caches for its own UI.
     static func account(from url: URL = storeURL) -> ProviderAccount? {

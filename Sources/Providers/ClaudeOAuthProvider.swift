@@ -8,20 +8,18 @@ import os
 /// unqualified. The endpoint is not a published API, though, so every failure
 /// path degrades to a status the UI can render honestly rather than to a guess.
 actor ClaudeOAuthProvider: UsageProvider {
-    nonisolated let id = "claude"
-    nonisolated let displayName = "Claude"
+    nonisolated let profile: ClaudeProfile
+    nonisolated let id: String
+    nonisolated let displayName: String
     nonisolated let glyph = ProviderGlyph.claude
+    /// This profile's token, behind its own cache — see `ClaudeKeychain`.
+    nonisolated private let keychain: ClaudeKeychain
 
     private let endpoint = URL(string: "https://api.anthropic.com/api/oauth/usage")!
     private let session: URLSession
     /// Held between refreshes so the keychain is read once per token, not once
     /// per minute — a keychain read can put a prompt in front of the user.
     private var credentials: ClaudeCredentials?
-    /// When the keychain last refused us. Reading the keychain can put a system
-    /// prompt in front of the user, so a refusal has to back off — otherwise
-    /// every refresh tick would raise the dialog again.
-    private var lastAuthFailure: Date?
-    private let authRetryDelay: TimeInterval = 5 * 60
     /// Set when the endpoint returns 429. Until it passes, refreshes are
     /// skipped without touching the network — a poll that keeps firing into a
     /// rate limit is how you stay rate limited.
@@ -31,13 +29,27 @@ actor ClaudeOAuthProvider: UsageProvider {
     private var consecutiveRateLimits = 0
 
     private let archive: UsageArchive
+    /// How this profile's token is obtained. Injected for the same reason
+    /// `session` is: the token path had no tests, which is how a back-off that
+    /// never expired shipped. Production reads through this profile's own
+    /// `ClaudeKeychain`; a test substitutes a fake credential source instead.
+    private let loadCredentials: @Sendable () throws -> ClaudeCredentials
 
-    init(session: URLSession = .shared, archive: UsageArchive = UsageArchive()) {
+    init(profile: ClaudeProfile = .default(),
+         session: URLSession = .shared,
+         archive: UsageArchive = UsageArchive(),
+         loadCredentials: (@Sendable () throws -> ClaudeCredentials)? = nil) {
+        self.profile = profile
+        self.id = profile.id
+        self.displayName = profile.displayName
+        let keychain = ClaudeKeychain(profile: profile)
+        self.keychain = keychain
+        self.loadCredentials = loadCredentials ?? { try keychain.load() }
         self.session = session
         self.archive = archive
         // Pick the back-off back up where the last run left it, so relaunching
         // during a penalty does not spend an attempt extending it.
-        self.retryNoEarlierThan = archive.loadBackoffUntil()
+        self.retryNoEarlierThan = archive.loadBackoffUntil(providerID: profile.id)
     }
 
     func fetchSnapshot() async throws -> ProviderSnapshot {
@@ -48,14 +60,19 @@ actor ClaudeOAuthProvider: UsageProvider {
         }
         do {
             let snapshot = try await fetch(retryingOnUnauthorized: true)
-            lastAuthFailure = nil
             retryNoEarlierThan = nil
             consecutiveRateLimits = 0
-            archive.saveBackoffUntil(nil)
+            archive.saveBackoffUntil(nil, providerID: id)
             return snapshot
         } catch UsageProviderError.needsAuth {
+            // The held copy goes, so the next tick re-reads. Backing off is
+            // `CredentialCache`'s job and it already does it correctly: it
+            // waits on the item's modification date rather than on a clock, so
+            // a token Claude Code has just rotated is picked up at once. A
+            // second timer here could only ever be wrong — and was: it stamped
+            // itself on every failed tick, so its own window never expired and
+            // the keychain was never read again.
             credentials = nil
-            lastAuthFailure = Date()
             throw UsageProviderError.needsAuth
         } catch UsageProviderError.credentialExpired {
             credentials = nil
@@ -64,7 +81,7 @@ actor ClaudeOAuthProvider: UsageProvider {
             if case .rateLimited(let retryAfter) = error {
                 consecutiveRateLimits += 1
                 retryNoEarlierThan = Date().addingTimeInterval(retryAfter)
-                archive.saveBackoffUntil(retryNoEarlierThan)
+                archive.saveBackoffUntil(retryNoEarlierThan, providerID: id)
                 Log.usage.notice("rate limited (\(self.consecutiveRateLimits)x), next attempt in \(retryAfter, format: .fixed(precision: 0))s")
             }
             throw error
@@ -87,7 +104,7 @@ actor ClaudeOAuthProvider: UsageProvider {
         if status == 401 || status == 403 {
             // Rejected but unexpired: the held copy is wrong, which is what
             // signing into a different account looks like from here.
-            ClaudeCredentials.forgetCached()
+            keychain.forgetCached()
             // The cached token went stale mid-flight; re-read once in case
             // Claude Code has refreshed it since.
             credentials = nil
@@ -124,11 +141,14 @@ actor ClaudeOAuthProvider: UsageProvider {
         if let credentials, !credentials.isExpired {
             return credentials.accessToken
         }
-        if let lastAuthFailure, Date().timeIntervalSince(lastAuthFailure) < authRetryDelay {
-            throw UsageProviderError.needsAuth
-        }
-        let fresh = try ClaudeCredentials.load()
-        Log.usage.debug("read keychain token, expires \(fresh.expiresAt, privacy: .public)")
+        // No local back-off lock here — `CredentialCache`, behind `keychain`,
+        // already does this correctly: it waits on the item's modification
+        // date rather than on a clock, so a token Claude Code has just
+        // rotated is picked up at once. A second timer here could only ever
+        // be wrong, and was — it stamped itself on every failed tick, so its
+        // own window never expired and the keychain was never read again.
+        let fresh = try loadCredentials()
+        Log.usage.debug("\(self.id, privacy: .public): read keychain token, expires \(fresh.expiresAt, privacy: .public)")
         // Expired is not signed out. Claude Code rotates this token whenever it
         // runs, and this app deliberately does not — minting one would mean
         // writing a credential it does not own, and racing the owner for it. So
@@ -140,14 +160,8 @@ actor ClaudeOAuthProvider: UsageProvider {
         return fresh.accessToken
     }
 
-    /// How long to wait after a 429.
-    ///
-    /// The server's own hint is honoured only as a *floor-raiser*: it answers
-    /// `Retry-After: 0`, and obeying that literally means retrying immediately,
-    /// which is what keeps you rate limited. So the wait starts at a minute and
-    /// doubles for each 429 in a row, capped so it always recovers on its own.
-    static func backoff(forAttempt attempt: Int, retryAfter: TimeInterval?) -> TimeInterval {
-        let floor: TimeInterval = 60
+    /// Doubles on every consecutive 429, up to 15 minutes.
+    static func backoff(forAttempt attempt: Int, floor: TimeInterval = 60, retryAfter: TimeInterval?) -> TimeInterval {
         let ceiling: TimeInterval = 15 * 60
         let doubled = floor * pow(2, Double(min(attempt, 4)))
         return min(ceiling, max(doubled, retryAfter ?? 0))
@@ -172,17 +186,21 @@ actor ClaudeOAuthProvider: UsageProvider {
 
     /// Read straight from the keychain item rather than from the cached token,
     /// so the settings row reflects what the next fetch will actually use.
-    nonisolated var signInRoute: SignInRoute { .guidance("Run Claude Code once — it signs in and refreshes the token this "
-                  + "reads. Use /login there to change account.") }
+    nonisolated var signInRoute: SignInRoute {
+        // Names the command for a profile, because that is the only way to
+        // reach it: plain `claude` signs the default one in, not this.
+        .guidance("Run `\(profile.signInCommand)` once — it signs in and refreshes "
+                  + "the token this reads. Use /login there to change account.")
+    }
 
-    nonisolated func forgetCachedCredential() { ClaudeCredentials.forgetCached() }
+    nonisolated func forgetCachedCredential() { keychain.forgetCached() }
 
     nonisolated func account() -> ProviderAccount? {
-        guard let credentials = try? ClaudeCredentials.load() else { return nil }
+        guard let credentials = try? keychain.load() else { return nil }
         return ProviderAccount(
             label: nil,   // the credential carries no address
             plan: credentials.subscriptionType,
-            source: "Claude Code",
+            source: profile.sourceName,
             manageURL: URL(string: "https://claude.ai/settings/usage")
         )
     }

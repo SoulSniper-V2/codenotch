@@ -24,8 +24,7 @@ final class ClaudeSessionMonitor: ObservableObject, AgentActivityMonitor {
     private var wakeObserver: NSObjectProtocol?
 
     init(
-        directory: URL = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent(".claude/sessions"),
+        directory: URL = ClaudeProfile.default().sessionsDirectory,
         livenessInterval: TimeInterval = 5
     ) {
         self.directory = directory

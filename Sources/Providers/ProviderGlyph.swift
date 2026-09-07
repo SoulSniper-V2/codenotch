@@ -19,6 +19,7 @@ enum ProviderGlyph: String, Codable, Equatable {
     case groq
     case mistral
     case perplexity
+    case glm
 
     /// If an asset with this name is in the bundle it wins over the traced
     /// outline — drop a PDF/SVG export from Figma in and it is picked up.
@@ -51,6 +52,7 @@ enum ProviderGlyph: String, Codable, Equatable {
         case .groq: return 0.98
         case .mistral: return 0.98
         case .perplexity: return 0.98
+        case .glm: return 0.98
         }
     }
 
@@ -65,6 +67,7 @@ enum ProviderGlyph: String, Codable, Equatable {
         case .copilot: return GlyphOutline.copilot
         case .openrouter: return GlyphOutline.openrouter
         case .deepseek: return GlyphOutline.deepseek
+        case .glm: return GlyphOutline.glm
         case .windsurf, .ollama, .groq, .mistral, .perplexity:
             return GlyphOutline.third
         }

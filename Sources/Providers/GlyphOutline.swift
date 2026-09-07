@@ -436,4 +436,20 @@ enum GlyphOutline {
          CGPoint(x: 0.80, y: 0.75), CGPoint(x: 0.40, y: 0.85),
          CGPoint(x: 0.20, y: 0.75)]
     ]
+
+    /// The Z.ai mark: the plan's own logo is a sharp geometric Z, so unlike
+    /// the traced marks above this one is defined rather than traced — ten
+    /// vertices in the unit box, exact at any size, in the spirit of
+    /// `cursor` being flattened from its source SVG.
+    ///
+    /// One loop, no counters, so the even-odd fill that keeps the OpenAI knot
+    /// open is a plain solid here. The diagonal's horizontal extent matches
+    /// the bar depths (0.2 top and bottom) so the stroke reads at one weight.
+    static let glm: [[CGPoint]] = [
+        [CGPoint(x: 0.0200, y: 0.0000), CGPoint(x: 0.9800, y: 0.0000),
+         CGPoint(x: 0.9800, y: 0.1850), CGPoint(x: 0.3180, y: 0.8000),
+         CGPoint(x: 0.9800, y: 0.8000), CGPoint(x: 0.9800, y: 1.0000),
+         CGPoint(x: 0.0200, y: 1.0000), CGPoint(x: 0.0200, y: 0.8150),
+         CGPoint(x: 0.6820, y: 0.2000), CGPoint(x: 0.0200, y: 0.2000)]
+    ]
 }

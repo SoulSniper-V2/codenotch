@@ -111,9 +111,7 @@ struct UsageBlock: Equatable {
     /// The line the tooltip leads with.
     func summary(now: Date = Date(), calendar: Calendar = .current) -> String {
         guard let resetsAt, resetsAt > now else { return reason }
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.locale = .current
+        let formatter = ResetCopy.formatter(for: calendar)
         // The same clock the vendor's own banner uses — "4:13 PM" — rather
         // than a countdown, because that is what you are waiting for.
         formatter.dateFormat = ResetCopy.daysApart(from: now, to: resetsAt,
@@ -201,9 +199,15 @@ struct ProviderSnapshot: Identifiable, Equatable {
     private var authPrompt: String {
         switch id {
         case "claude":     return "Sign in to Claude Code to read your usage"
+        // A profile is signed in by running Claude Code against its directory,
+        // which is worth saying: plain `claude` signs the default one in.
+        case _ where ClaudeProfile.isClaude(providerID: id):
+            let slug = ClaudeProfile.slug(fromProviderID: id) ?? ""
+            return "Sign in to Claude Code in ~/.claude-\(slug) to read your usage"
         case "cursor":     return "Sign in to Cursor in the editor"
         case "codex":      return "Sign in to Codex to read your usage"
         case "gemini":     return "Sign in to Antigravity to read your usage"
+        case "glm":        return "Set up a GLM Coding Plan key for a coding tool to read your usage"
         default:           return "Sign in to \(displayName) to read your usage"
         }
     }
