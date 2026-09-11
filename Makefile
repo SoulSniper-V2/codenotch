@@ -118,6 +118,7 @@ notarize: dmg
 	fi
 	xcrun notarytool submit $(DMG) --key $(ASC_KEY) --key-id $(ASC_KEY_ID) --issuer $(ASC_ISSUER) --wait
 	xcrun stapler staple $(DMG)
+	xcrun stapler staple $(RELEASE_DIR)/$(APP_NAME).app || true
 
 release: archive dmg notarize verify-release
 	@echo "Notarized: $(DMG)"
@@ -126,6 +127,7 @@ release: archive dmg notarize verify-release
 # the actual proof that the download will open without a right-click.
 verify-release:
 	xcrun stapler validate $(DMG)
+	mkdir -p $(RELEASE_DIR)/mnt
 	hdiutil attach $(DMG) -nobrowse -mountpoint $(RELEASE_DIR)/mnt
 	codesign --verify --deep --strict --verbose=2 $(RELEASE_DIR)/mnt/$(APP_NAME).app
 	spctl --assess --type execute --verbose=4 $(RELEASE_DIR)/mnt/$(APP_NAME).app
