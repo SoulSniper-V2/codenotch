@@ -37,17 +37,37 @@ final class CredentialCache<Credential>: @unchecked Sendable {
     /// picked up while you are still looking at the notch.
     private let recheckAfter: TimeInterval
     /// How long to leave macOS alone after it has said no, where there is no
-    /// probe to be more precise with.
+    /// probe to be more precise with — and, since the fix below, the same
+    /// wait a *transient* failure gets even when the probe says nothing moved.
     private let retryAfterFailure: TimeInterval
     private let now: () -> Date
+    /// Whether a failure is a verdict about the credential itself, rather than
+    /// about the moment it happened to be asked for.
+    ///
+    /// The distinction this app actually has is real refusal vs. everything
+    /// else: `errSecAuthFailed`/`errSecUserCanceled`/`errSecInteractionNotAllowed`
+    /// mean someone was asked and said no, and asking again on a timer would
+    /// mean putting the same dialogue back in front of them unprompted. Every
+    /// other failure — `errSecInDarkWake` chief among them, from a real
+    /// incident: one read landed during it, and every read for the next three
+    /// hours replayed that single failure because the item's `mdat` never
+    /// moved in between — has nothing to say about the credential at all, and
+    /// defaults to being retried after `retryAfterFailure` precisely because
+    /// nothing here can prove it wasn't transient.
+    private let isPermanentFailure: (Error) -> Bool
 
+    // `isExpired` stays the last parameter, defaultless, so every existing
+    // call site's trailing closure — `CredentialCache<Token> { $0.expired }`
+    // — keeps binding to it rather than to the new, defaulted parameter.
     init(recheckAfter: TimeInterval = 5 * 60,
          retryAfterFailure: TimeInterval = 5 * 60,
          now: @escaping () -> Date = Date.init,
+         isPermanentFailure: @escaping (Error) -> Bool = { _ in false },
          isExpired: @escaping (Credential) -> Bool) {
         self.recheckAfter = recheckAfter
         self.retryAfterFailure = retryAfterFailure
         self.now = now
+        self.isPermanentFailure = isPermanentFailure
         self.isExpired = isExpired
     }
 
@@ -76,10 +96,21 @@ final class CredentialCache<Credential>: @unchecked Sendable {
 
         // Have we already put this exact version of the item to macOS?
         let alreadyAsked: Bool
-        if let current, let askedStamp {
-            // The probe settles it outright: the same item can only give the
-            // same answer, whether that answer was a token or a refusal.
-            alreadyAsked = current == askedStamp
+        if let current, let askedStamp, current == askedStamp {
+            // The probe settles it outright for a success, or for a failure
+            // that is a verdict about the credential: the same item can only
+            // give the same answer. A *transient* failure is not that — dark
+            // wake says nothing about what the item holds — so it falls
+            // through to the same backoff a failure with no probe gets below,
+            // even though the item has not moved.
+            if let failure, !isPermanentFailure(failure) {
+                alreadyAsked = askedAt.map { now().timeIntervalSince($0) < retryAfterFailure } ?? false
+            } else {
+                alreadyAsked = true
+            }
+        } else if let current, let askedStamp {
+            // Different versions: nothing to reuse, whatever the last answer was.
+            alreadyAsked = false
         } else if let askedAt {
             // Nothing to compare against, so wait it out instead — and wait
             // longer after a refusal, because a refusal retried on a timer is
@@ -116,6 +147,17 @@ final class CredentialCache<Credential>: @unchecked Sendable {
             lock.unlock()
             throw error
         }
+    }
+
+    /// What is already in hand, and nothing more.
+    ///
+    /// For a caller that would like the credential's details but must not be
+    /// the reason a dialogue appears. The settings row is exactly that: it is
+    /// rebuilt every time the window renders, and it has no business asking
+    /// macOS for a secret in order to print a plan name.
+    var held: Credential? {
+        lock.lock(); defer { lock.unlock() }
+        return stored
     }
 
     /// Drop what is held, so the next read goes to the keychain for real.

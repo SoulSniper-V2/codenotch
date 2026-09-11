@@ -16,9 +16,40 @@ struct AntigravityActivity: Equatable {
     let requestsToday: Int
     let lastRequest: Date?
 
-    static var transcriptRoot: URL {
-        URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent(".gemini/antigravity/brain")
+    /// Every Antigravity install's transcripts, not just the first one found.
+    ///
+    /// Antigravity keeps a directory per flavour under `~/.gemini` —
+    /// `antigravity`, `antigravity-ide`, `antigravity-cli`, `antigravity-backup`
+    /// — and each has its own `brain`. Picking the first that *exists* looked
+    /// reasonable and was not: leaving a flavour behind leaves its directory
+    /// behind too, so on a machine that has run the IDE and then moved to the
+    /// CLI all four exist and the first is empty. The count came out zero while
+    /// the transcripts sat one directory over.
+    ///
+    /// So: all of them. Trajectories are UUID-named per install, so nothing is
+    /// counted twice, and somebody who uses the IDE and the CLI in the same day
+    /// gets one number for the day rather than whichever half was looked at.
+    static var transcriptRoots: [URL] { transcriptRoots(home: URL(fileURLWithPath: NSHomeDirectory())) }
+
+    static func transcriptRoots(home: URL) -> [URL] {
+        let gemini = home.appendingPathComponent(".gemini")
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: gemini.path)) ?? []
+        return names
+            .filter { $0.hasPrefix("antigravity") }
+            .sorted()
+            .map { gemini.appendingPathComponent($0).appendingPathComponent("brain") }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    /// Every install's activity, as one day's worth.
+    static func read(roots: [URL] = transcriptRoots, now: Date = Date()) -> AntigravityActivity {
+        roots.reduce(AntigravityActivity(requestsToday: 0, lastRequest: nil)) { total, root in
+            let one = read(root: root, now: now)
+            return AntigravityActivity(
+                requestsToday: total.requestsToday + one.requestsToday,
+                lastRequest: [total.lastRequest, one.lastRequest].compactMap { $0 }.max()
+            )
+        }
     }
 
     /// A step the model actually answered. User input and system checkpoints
@@ -26,7 +57,8 @@ struct AntigravityActivity: Equatable {
     /// work the model never did.
     private static let modelSource = "MODEL"
 
-    static func read(root: URL = transcriptRoot, now: Date = Date()) -> AntigravityActivity {
+    /// One install's, which is what the combining read above is made of.
+    static func read(root: URL, now: Date = Date()) -> AntigravityActivity {
         let manager = FileManager.default
         guard let trajectories = try? manager.contentsOfDirectory(
             at: root, includingPropertiesForKeys: nil
@@ -77,7 +109,47 @@ struct AntigravityActivity: Equatable {
     /// What the cell says. Deliberately a count with the limit's absence stated,
     /// rather than a number that looks like a percentage.
     var summary: String {
-        guard requestsToday > 0 else { return "no requests today" }
-        return "~\(requestsToday) request\(requestsToday == 1 ? "" : "s") today"
+        guard requestsToday > 0 else { return L10n.t("no requests today") }
+        if requestsToday == 1 { return L10n.t("~\(requestsToday) request today") }
+        else { return L10n.t("~\(requestsToday) requests today") }
+    }
+
+    /// What the tooltip's row is called.
+    ///
+    /// A bare `0` on a day Antigravity has not been opened reads as the app
+    /// failing to find anything rather than as an honest nothing — and that is
+    /// exactly what a wrong directory looks like too, which is how this went
+    /// unnoticed. Saying when it *was* last used tells the two apart.
+    func label(now: Date = Date()) -> String {
+        guard requestsToday == 0, let lastRequest else {
+            return "Requests today · no limit published"
+        }
+        return "Requests today · last used \(Self.lastUsed(lastRequest, now: now))"
+    }
+
+    /// Counted in calendar days, not in elapsed time, because the number beside
+    /// it is: `requestsToday` asks whether a timestamp falls on today's date.
+    /// Measured in elapsed hours instead, a Saturday evening reads as "2 days
+    /// ago" on a Tuesday morning, and the row's two halves disagree about what
+    /// a day is.
+    ///
+    /// Inside a day it defers to `ElapsedCopy`, the same phrase the session list
+    /// uses, so the two read alike. Days are added here rather than there:
+    /// that helper answers "is this still working", where a span of days cannot
+    /// arise and would only be noise.
+    private static func lastUsed(_ date: Date, now: Date) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        let days = calendar.dateComponents(
+            [.day],
+            from: calendar.startOfDay(for: date),
+            to: calendar.startOfDay(for: now)
+        ).day ?? 0
+
+        switch days {
+        case ..<1:  return ElapsedCopy.ago(since: date, now: now)
+        case 1:     return "yesterday"
+        default:    return "\(days) days ago"
+        }
     }
 }

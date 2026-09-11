@@ -1,6 +1,6 @@
 import Foundation
+import SQLite3
 import os
-
 /// The OAuth token Antigravity holds for a Google account.
 ///
 /// Borrowed, like every other credential here — Antigravity signs in, this only
@@ -10,7 +10,17 @@ struct AntigravityCredentials {
     let expiresAt: Date
     /// `consumer` for a personal Google account; enterprise installs differ.
     let authMethod: String
+    let projectId: String?
+    let email: String?
 
+    init(accessToken: String, expiresAt: Date, authMethod: String = "consumer",
+         projectId: String? = nil, email: String? = nil) {
+        self.accessToken = accessToken
+        self.expiresAt = expiresAt
+        self.authMethod = authMethod
+        self.projectId = projectId
+        self.email = email
+    }
     var isExpired: Bool { expiresAt <= Date() }
 
     static let service = "gemini"
@@ -21,6 +31,21 @@ struct AntigravityCredentials {
 
     static func forgetCached() { cache.forget() }
 
+    /// Whatever a previous fetch already read, without asking macOS again.
+    static var held: AntigravityCredentials? { cache.held }
+
+    /// Whether Antigravity has filed a credential at all, judged from the
+    /// item's attributes rather than its contents — those are not behind the
+    /// access prompt the secret is, so this can be asked freely.
+    static func isSignedIn() -> Bool {
+        if KeychainItem.modifiedAt(service: service, account: account) != nil { return true }
+        let jsonPath = ("~/.gemini/oauth_creds.json" as NSString).expandingTildeInPath
+        if FileManager.default.fileExists(atPath: jsonPath) { return true }
+        let ompDBPath = ("~/.omp/agent/agent.db" as NSString).expandingTildeInPath
+        if FileManager.default.fileExists(atPath: ompDBPath) { return true }
+        return false
+    }
+
     /// Antigravity stores through Go's `keyring` package, which base64-encodes
     /// the payload behind this marker rather than writing raw JSON the way
     /// Claude Code does. Decoding it is not optional: without stripping the
@@ -29,12 +54,22 @@ struct AntigravityCredentials {
 
     static func load() throws -> AntigravityCredentials {
         try cache.value(
-            itemModifiedAt: { KeychainItem.modifiedAt(service: service, account: account) },
+            itemModifiedAt: {
+                let keychainMod = KeychainItem.modifiedAt(service: service, account: account)
+                let jsonPath = ("~/.gemini/oauth_creds.json" as NSString).expandingTildeInPath
+                let jsonMod = (try? FileManager.default.attributesOfItem(atPath: jsonPath))?[.modificationDate] as? Date
+                let ompPath = ("~/.omp/agent/agent.db" as NSString).expandingTildeInPath
+                let ompMod = (try? FileManager.default.attributesOfItem(atPath: ompPath))?[.modificationDate] as? Date
+                return [keychainMod, jsonMod, ompMod].compactMap { $0 }.max()
+            },
             reload: read
         )
     }
 
     private static func read() throws -> AntigravityCredentials {
+        var keychainCreds: AntigravityCredentials?
+        var keychainStatus: OSStatus = 0
+
         var item: CFTypeRef?
         let status = SecItemCopyMatching([
             kSecClass: kSecClassGenericPassword,
@@ -43,16 +78,93 @@ struct AntigravityCredentials {
             kSecReturnData: true,
             kSecMatchLimit: kSecMatchLimitOne
         ] as CFDictionary, &item)
+        keychainStatus = status
 
-        guard status == errSecSuccess, let data = item as? Data else {
-            Log.usage.error("antigravity keychain read failed: OSStatus \(status)")
-            throw ClaudeCredentials.wasRefused(status)
-                ? UsageProviderError.accessDenied
-                : UsageProviderError.needsAuth
+        if status == errSecSuccess, let data = item as? Data, let decoded = decode(data) {
+            keychainCreds = decoded
+            if !decoded.isExpired {
+                return decoded
+            }
         }
 
-        guard let decoded = decode(data) else { throw UsageProviderError.needsAuth }
-        return decoded
+        // If Keychain had no unexpired token, check OMP SQLite store (active agent tokens)
+        if let ompCreds = readOMPCredentials() {
+            if !ompCreds.isExpired {
+                return ompCreds
+            }
+            if keychainCreds == nil {
+                keychainCreds = ompCreds
+            }
+        }
+
+        // Then check ~/.gemini/oauth_creds.json
+        if let jsonCreds = readJSONCredentials() {
+            if !jsonCreds.isExpired {
+                return jsonCreds
+            }
+            if keychainCreds == nil {
+                keychainCreds = jsonCreds
+            }
+        }
+
+        if let creds = keychainCreds {
+            return creds
+        }
+
+        Log.usage.error("antigravity credentials read failed: OSStatus \(keychainStatus)")
+        if ClaudeCredentials.wasTransient(keychainStatus) { throw UsageProviderError.credentialExpired }
+        throw ClaudeCredentials.wasRefused(keychainStatus)
+            ? UsageProviderError.accessDenied
+            : UsageProviderError.needsAuth
+    }
+
+    private static func readOMPCredentials() -> AntigravityCredentials? {
+        let dbURL = URL(fileURLWithPath: ("~/.omp/agent/agent.db" as NSString).expandingTildeInPath)
+        guard let db = SQLiteStore.open(dbURL) else { return nil }
+        defer { sqlite3_close(db) }
+
+        let sql = "SELECT data FROM auth_credentials WHERE provider = 'google-antigravity' ORDER BY updated_at DESC LIMIT 1;"
+        let rows = SQLiteStore.rows(in: db, sql: sql)
+        guard let first = rows.first, let data = first.data(using: .utf8) else { return nil }
+
+        struct OMPPayload: Decodable {
+            let access: String?
+            let expires: Double?
+            let projectId: String?
+            let email: String?
+        }
+
+        guard let payload = try? JSONDecoder().decode(OMPPayload.self, from: data),
+              let token = payload.access else { return nil }
+
+        let expiry = payload.expires.map { Date(timeIntervalSince1970: $0 / 1000.0) } ?? Date.distantFuture
+        return AntigravityCredentials(
+            accessToken: token,
+            expiresAt: expiry,
+            authMethod: "consumer",
+            projectId: payload.projectId,
+            email: payload.email
+        )
+    }
+
+    private static func readJSONCredentials() -> AntigravityCredentials? {
+        let path = ("~/.gemini/oauth_creds.json" as NSString).expandingTildeInPath
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return nil }
+
+        struct JSONPayload: Decodable {
+            let access_token: String?
+            let expiry_date: Double?
+        }
+
+        guard let payload = try? JSONDecoder().decode(JSONPayload.self, from: data),
+              let token = payload.access_token else { return nil }
+
+        let expiry = payload.expiry_date.map { Date(timeIntervalSince1970: $0 / 1000.0) } ?? Date.distantFuture
+        return AntigravityCredentials(
+            accessToken: token,
+            expiresAt: expiry,
+            authMethod: "consumer"
+        )
     }
 
     /// Split out so the decoding can be tested against a real stored value

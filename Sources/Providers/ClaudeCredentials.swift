@@ -42,9 +42,9 @@ struct ClaudeCredentials {
     /// authorization to read — only this second, targeted fetch of the
     /// winner's actual data does, which is why it costs the same single prompt
     /// as before, per profile.
-    static func read(service: String) throws -> ClaudeCredentials {
-        guard let winner = KeychainItem.newest(service: service) else {
-            Log.usage.error("keychain read failed: no item under \(service, privacy: .public)")
+    static func read(services: [String]) throws -> ClaudeCredentials {
+        guard let winner = KeychainItem.newest(services: services) else {
+            Log.usage.error("keychain read failed: no item under \(services.joined(separator: ", "), privacy: .public)")
             throw UsageProviderError.needsAuth
         }
 
@@ -62,7 +62,20 @@ struct ClaudeCredentials {
             // exact wrong instant — whereas -25308 (interaction not allowed) or
             // -128 (user cancelled) mean it is there and this app is not on its
             // access list. Those need very different advice, so record which.
-            Log.usage.error("keychain read of \(service, privacy: .public) failed: OSStatus \(status) (\(Self.explain(status), privacy: .public))")
+            Log.usage.error("keychain read of \(services.joined(separator: ", "), privacy: .public) failed: OSStatus \(status) (\(Self.explain(status), privacy: .public))")
+            // A machine just woken from a long sleep answers -25320 — awake
+            // enough to run background work, not awake enough to show a
+            // dialogue even if one were needed. The credential is unaffected;
+            // asking again in a moment succeeds on its own. `.needsAuth` is
+            // the wrong answer for it: `supersedesHistory` treats a genuine
+            // sign-out as reason to erase the archived reading, and reported
+            // as "waiting for the first reading" what was really a few
+            // seconds of "not right now" — throwing away a perfectly good
+            // number for something that was never actually wrong.
+            // `.credentialExpired` already means exactly this — "still true,
+            // just old" — for a token that aged out overnight; reused here
+            // for the same shape of problem arriving a different way.
+            if Self.wasTransient(status) { throw UsageProviderError.credentialExpired }
             throw Self.wasRefused(status)
                 ? UsageProviderError.accessDenied
                 : UsageProviderError.needsAuth
@@ -105,6 +118,17 @@ struct ClaudeCredentials {
             || status == errSecInteractionNotAllowed
     }
 
+    /// A read that failed for a reason with nothing to do with the account.
+    ///
+    /// -25320, "in dark wake, no UI possible", is what a Mac answers for a
+    /// short window right after waking from sleep — the keychain will not
+    /// raise a dialogue while the display is still off, whether or not one
+    /// would be needed. Security doesn't export a named constant for it, so
+    /// the raw value is what there is to check.
+    static func wasTransient(_ status: OSStatus) -> Bool {
+        status == -25320   // errSecInDarkWake
+    }
+
     static func explain(_ status: OSStatus) -> String {
         switch status {
         case errSecItemNotFound:          return "no such item — Claude Code has not signed in"
@@ -123,32 +147,46 @@ struct ClaudeCredentials {
 /// keychain item with its own access list: macOS prompts once per item, and a
 /// cache shared between them would hand the personal token to the work ring.
 final class ClaudeKeychain: @unchecked Sendable {
-    let service: String
+    let services: [String]
 
     /// Read once, then held until the token expires — see `CredentialCache`.
     /// Claude Code rotates this roughly hourly, so this is about one keychain
     /// read an hour instead of two a minute.
-    private let cache = CredentialCache<ClaudeCredentials> { $0.isExpired }
+    ///
+    /// Only `.accessDenied` is permanent — a real "Deny" on the ACL prompt.
+    /// Everything else `ClaudeCredentials.read` can throw, `needsAuth`
+    /// included, gets retried after the cache's own backoff even while the
+    /// item's `mdat` has not moved: found on a real machine, a single keychain
+    /// read landing during `errSecInDarkWake` — the Mac in a brief low-power
+    /// wake with no UI possible, nothing to do with the credential at all —
+    /// was cached as `needsAuth` and replayed for the next three hours, since
+    /// nothing else ever touched the item again once it held a valid token.
+    private let cache = CredentialCache<ClaudeCredentials>(
+        isPermanentFailure: { if case UsageProviderError.accessDenied = $0 { return true }; return false },
+        isExpired: { $0.isExpired }
+    )
 
-    init(service: String) {
-        self.service = service
+    init(services: [String]) {
+        self.services = services
     }
 
     convenience init(profile: ClaudeProfile) {
-        self.init(service: profile.keychainService)
+        self.init(services: profile.keychainServices)
     }
 
     /// The default profile's reader, shared so that every caller that predates
-    /// profiles keeps sharing one cache — and so one prompt.
-    static let `default` = ClaudeKeychain(service: ClaudeProfile.defaultKeychainService)
+    /// profiles keeps sharing one cache — and so one prompt. Uses the default
+    /// profile's full candidate list, so it finds the token whether Claude Code
+    /// filed it under the bare name or the suffixed one.
+    static let `default` = ClaudeKeychain(services: ClaudeProfile.default().keychainServices)
 
     /// Reads whatever is stored, expired or not. Judging expiry is the caller's
     /// job, because "signed out" and "the token has aged out overnight" call for
     /// different behaviour and only one of them is worth alarming anyone about.
     func load() throws -> ClaudeCredentials {
         try cache.value(
-            itemModifiedAt: { KeychainItem.modifiedAt(service: service) },
-            reload: { try ClaudeCredentials.read(service: service) }
+            itemModifiedAt: { KeychainItem.modifiedAt(services: services) },
+            reload: { try ClaudeCredentials.read(services: services) }
         )
     }
 

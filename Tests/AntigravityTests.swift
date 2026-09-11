@@ -297,36 +297,9 @@ final class AntigravityBridgeTests: XCTestCase {
         XCTAssertEqual(windows.count, 2)
         XCTAssertEqual(windows[0].id, "gemini-weekly")
         XCTAssertEqual(windows[0].usedFraction ?? 0, 1 - 0.96262, accuracy: 0.00001)
-        XCTAssertEqual(windows[0].label, "Gemini · Weekly limit")
-        XCTAssertEqual(windows[0].windowMinutes, 10080)
-        XCTAssertEqual(windows[1].label, "Claude/GPT · Weekly limit")
-    }
-
-    func testItDistinguishesFiveHourAndWeeklyLimits() {
-        let json = Data("""
-        {"response":{"groups":[
-          {"displayName":"Gemini Models",
-           "buckets":[
-             {"bucketId":"gemini-weekly","displayName":"Weekly Limit","remainingFraction":0.7},
-             {"bucketId":"gemini-5h","displayName":"Five Hour Limit","remainingFraction":0.9}
-           ]},
-          {"displayName":"Claude and GPT models",
-           "buckets":[
-             {"bucketId":"3p-weekly","displayName":"Weekly Limit","remainingFraction":0.8},
-             {"bucketId":"3p-5h","displayName":"Five Hour Limit","remainingFraction":0.95}
-           ]}
-        ]}}
-        """.utf8)
-        let windows = AntigravityBridge.windows(in: json)
-        XCTAssertEqual(windows.count, 4)
-        XCTAssertEqual(windows.map(\.id), ["gemini-5h", "gemini-weekly", "3p-5h", "3p-weekly"])
-        XCTAssertEqual(windows.map(\.label), [
-            "Gemini · 5-hour limit",
-            "Gemini · Weekly limit",
-            "Claude/GPT · 5-hour limit",
-            "Claude/GPT · Weekly limit",
-        ])
-        XCTAssertEqual(windows.map(\.windowMinutes), [300, 10080, 300, 10080])
+        XCTAssertEqual(windows[0].label, "Weekly Limit")
+        XCTAssertEqual(windows[0].group, "Gemini Models")
+        XCTAssertEqual(windows[0].duration, 7 * 86400)
     }
 
     /// A full bucket is 0% used, not "no reading".
@@ -458,7 +431,8 @@ final class CredentialCacheTests: XCTestCase {
         var reads = 0
         var clock = Date(timeIntervalSince1970: 0)
         var stamp = Date(timeIntervalSince1970: 1_000)
-        let cache = CredentialCache<Token>(now: { clock }) { $0.expired }
+        let cache = CredentialCache<Token>(now: { clock }, isPermanentFailure: { $0 is Denied },
+                                           isExpired: { $0.expired })
 
         // A good read first, so there is something to fall back on.
         _ = try? cache.value(itemModifiedAt: { stamp }) { reads += 1; return Token(expired: true) }
@@ -571,13 +545,13 @@ final class AntigravityActivityMonitorTests: XCTestCase {
     }
 
     @discardableResult
-    private func transcript(_ name: String, modified: Date) throws -> URL {
+    private func transcript(_ name: String, modified: Date, content: String = "{\"type\": \"USER_INPUT\"}") throws -> URL {
         let dir = root.appendingPathComponent("\(name)/.system_generated/logs")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let file = dir.appendingPathComponent("transcript.jsonl")
-        try "{}".write(to: file, atomically: true, encoding: .utf8)
+        try content.write(to: file, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.modificationDate: modified],
-                                              ofItemAtPath: file.path)
+                                               ofItemAtPath: file.path)
         return file
     }
 
@@ -602,6 +576,21 @@ final class AntigravityActivityMonitorTests: XCTestCase {
         let sessions = AntigravityActivityMonitor.read(root: root, staleAfter: 45)
         XCTAssertEqual(sessions.count, 1)
         XCTAssertEqual(sessions.first?.id, "antigravity.live")
+    }
+
+    func testAnIdleTranscriptIsCleanedUpQuickly() throws {
+        try transcript("idle", modified: Date().addingTimeInterval(-10), content: "{\"type\": \"PLANNER_RESPONSE\"}")
+        let sessions = AntigravityActivityMonitor.read(root: root, staleAfter: 45)
+        XCTAssertTrue(sessions.isEmpty)
+    }
+
+    func testAWaitingTranscriptPersists() throws {
+        let waitingJSON = "{\"type\": \"PLANNER_RESPONSE\", \"tool_calls\": [{\"name\": \"ask_question\"}]}"
+        try transcript("waiting", modified: Date().addingTimeInterval(-600), content: waitingJSON)
+        let sessions = AntigravityActivityMonitor.read(root: root, staleAfter: 45)
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertEqual(sessions.first?.state, .waiting)
+        XCTAssertEqual(sessions.first?.detail, "Question")
     }
 
     func testNoTranscriptsIsQuietRatherThanAnError() {

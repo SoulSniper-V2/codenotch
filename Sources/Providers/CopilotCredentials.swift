@@ -31,30 +31,53 @@ enum CopilotCredentials {
         resolve()?.token
     }
 
+    private static var cachedCredential: (cred: Credential, expiry: Date)?
+    private static var keychainRefusedUntil: Date?
+
+    static func forgetCached() {
+        cachedCredential = nil
+        keychainRefusedUntil = nil
+    }
+
     static func resolve(hostsURL: URL? = nil) -> Credential? {
+        if let cached = cachedCredential, cached.expiry > Date() {
+            return cached.cred
+        }
+
         // 1. Env or SecretStore
         if let key = SecretStore.resolveKey(id: "copilot", envNames: ["COPILOT_API_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"]) {
-            return Credential(token: key, user: nil, source: "API / Device Flow")
+            let cred = Credential(token: key, user: nil, source: "API / Device Flow")
+            cachedCredential = (cred, Date().addingTimeInterval(3600))
+            return cred
         }
 
         // 2. Copilot CLI Keychain entry
-        if let cli = readKeychainItem(service: "copilot-cli") {
-            return Credential(token: cli.token, user: cli.user, source: "Copilot CLI")
+        if keychainRefusedUntil == nil || keychainRefusedUntil! <= Date() {
+            if let cli = readKeychainItem(service: "copilot-cli") {
+                let cred = Credential(token: cli.token, user: cli.user, source: "Copilot CLI")
+                cachedCredential = (cred, Date().addingTimeInterval(3600))
+                return cred
+            }
         }
 
         // 3. GitHub CLI hosts.yml
         if let gh = fromHostsYAML(url: hostsURL ?? defaultHostsURL) {
+            cachedCredential = (gh, Date().addingTimeInterval(3600))
             return gh
         }
 
-        // 4. GitHub CLI Keychain
-        if let kc = fromKeychain() {
-            return kc
+        // 4. GitHub CLI process fallback (gh auth token - zero keychain prompts)
+        if let proc = fromGitHubCLIProcess() {
+            cachedCredential = (proc, Date().addingTimeInterval(3600))
+            return proc
         }
 
-        // 5. GitHub CLI process fallback
-        if let proc = fromGitHubCLIProcess() {
-            return proc
+        // 5. GitHub CLI Keychain direct read (only if not refused, and cached)
+        if keychainRefusedUntil == nil || keychainRefusedUntil! <= Date() {
+            if let kc = fromKeychain() {
+                cachedCredential = (kc, Date().addingTimeInterval(3600))
+                return kc
+            }
         }
 
         return nil
@@ -141,6 +164,9 @@ enum CopilotCredentials {
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         guard status == errSecSuccess, let dict = item as? [String: Any] else {
+            if ClaudeCredentials.wasRefused(status) {
+                keychainRefusedUntil = Date().addingTimeInterval(3600)
+            }
             return nil
         }
         guard let data = dict[kSecValueData as String] as? Data,

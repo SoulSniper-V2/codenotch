@@ -81,6 +81,11 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(confettiEnabled, forKey: Keys.confettiEnabled) }
     }
 
+    /// The preferred limit window to show for Antigravity provider (automatic, 5h, or weekly).
+    @Published var antigravityHeadlineLimit: AntigravityHeadlineLimit {
+        didSet { defaults.set(antigravityHeadlineLimit.rawValue, forKey: Keys.antigravityHeadlineLimit) }
+    }
+
     /// The version whose changes have already been shown.
     ///
     /// Written when the What's New dialogue is dismissed rather than when it
@@ -116,6 +121,16 @@ final class Preferences: ObservableObject {
         static let quotaWarningThreshold = "quotaWarningThreshold"
         static let globalHotkeyEnabled = "globalHotkeyEnabled"
         static let confettiEnabled = "confettiEnabled"
+        static let antigravityHeadlineLimit = "antigravityHeadlineLimit"
+    }
+
+    nonisolated static func storedAntigravityHeadlineLimit(
+        defaults: UserDefaults = .standard
+    ) -> AntigravityHeadlineLimit {
+        guard let value = defaults.string(forKey: Keys.antigravityHeadlineLimit),
+              let limit = AntigravityHeadlineLimit(rawValue: value)
+        else { return .automatic }
+        return limit
     }
 
     /// True the very first time this copy runs, and never again.
@@ -182,6 +197,8 @@ final class Preferences: ObservableObject {
         self.quotaWarningThreshold = defaults.object(forKey: Keys.quotaWarningThreshold) as? Int ?? 20
         self.globalHotkeyEnabled = defaults.object(forKey: Keys.globalHotkeyEnabled) as? Bool ?? true
         self.confettiEnabled = defaults.object(forKey: Keys.confettiEnabled) as? Bool ?? true
+        self.antigravityHeadlineLimit = defaults.string(forKey: Keys.antigravityHeadlineLimit)
+            .flatMap(AntigravityHeadlineLimit.init(rawValue:)) ?? .automatic
     }
 
     func isConnected(_ providerID: String) -> Bool {

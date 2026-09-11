@@ -452,4 +452,31 @@ enum GlyphOutline {
          CGPoint(x: 0.0200, y: 1.0000), CGPoint(x: 0.0200, y: 0.8150),
          CGPoint(x: 0.6820, y: 0.2000), CGPoint(x: 0.0200, y: 0.2000)]
     ]
+
+    /// Command Code's mark is the macOS command key — four loops around a
+    /// cross. Geometric, not traced: their SVG is that symbol, and a screenshot
+    /// trace would be worse than a readable glyph at 16pt.
+    static let commandcode: [[CGPoint]] = [
+        [CGPoint(x: 0.12, y: 0.12), CGPoint(x: 0.32, y: 0.12),
+         CGPoint(x: 0.32, y: 0.32), CGPoint(x: 0.12, y: 0.32)],
+        [CGPoint(x: 0.68, y: 0.12), CGPoint(x: 0.88, y: 0.12),
+         CGPoint(x: 0.88, y: 0.32), CGPoint(x: 0.68, y: 0.32)],
+        [CGPoint(x: 0.12, y: 0.68), CGPoint(x: 0.32, y: 0.68),
+         CGPoint(x: 0.32, y: 0.88), CGPoint(x: 0.12, y: 0.88)],
+        [CGPoint(x: 0.68, y: 0.68), CGPoint(x: 0.88, y: 0.68),
+         CGPoint(x: 0.88, y: 0.88), CGPoint(x: 0.68, y: 0.88)],
+        [CGPoint(x: 0.22, y: 0.42), CGPoint(x: 0.78, y: 0.42),
+         CGPoint(x: 0.78, y: 0.58), CGPoint(x: 0.22, y: 0.58)],
+        [CGPoint(x: 0.42, y: 0.22), CGPoint(x: 0.58, y: 0.22),
+         CGPoint(x: 0.58, y: 0.78), CGPoint(x: 0.42, y: 0.78)]
+    ]
+
+    static let opencode: [[CGPoint]] = [
+        [CGPoint(x: 0.1500, y: 0.1000), CGPoint(x: 0.6200, y: 0.4400),
+         CGPoint(x: 0.1500, y: 0.7800), CGPoint(x: 0.1500, y: 0.6000),
+         CGPoint(x: 0.4400, y: 0.4400), CGPoint(x: 0.1500, y: 0.2800)],
+        [CGPoint(x: 0.1500, y: 0.8400), CGPoint(x: 0.7500, y: 0.8400),
+         CGPoint(x: 0.7500, y: 0.9600), CGPoint(x: 0.1500, y: 0.9600)]
+    ]
 }
+

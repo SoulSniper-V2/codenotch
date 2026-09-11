@@ -30,6 +30,7 @@ enum ProviderStatus: Equatable {
 /// and the longer all-models window), others have one.
 struct LimitWindow: Identifiable, Codable, Equatable {
     let id: String
+    let group: String?
     let label: String
     /// 0...1+, where 1 means the limit is spent. Nil when the provider reports
     /// what is left but never says what the limit was — Perplexity does exactly
@@ -42,6 +43,8 @@ struct LimitWindow: Identifiable, Codable, Equatable {
     let used: Int?
     /// Nil when the provider does not say when the window rolls over.
     let resetsAt: Date?
+    /// Exact cycle length when known; optional to keep older archives readable.
+    let duration: TimeInterval?
     /// Length of the window in minutes, when the provider states it (Codex
     /// reports `windowDurationMins` / `window_minutes`). Drives the
     /// deficit/reserve pace estimate; when nil the estimate falls back to
@@ -58,17 +61,26 @@ struct LimitWindow: Identifiable, Codable, Equatable {
     /// Exact text for the cell under the ring, replacing the computed figure.
     let customHeadline: String?
 
-    init(id: String, label: String, usedFraction: Double? = nil,
-         remaining: Int? = nil, used: Int? = nil, resetsAt: Date? = nil,
-         windowMinutes: Double? = nil, customSummary: String? = nil,
+    init(id: String,
+         group: String? = nil,
+         label: String,
+         usedFraction: Double? = nil,
+         remaining: Int? = nil,
+         used: Int? = nil,
+         resetsAt: Date? = nil,
+         duration: TimeInterval? = nil,
+         windowMinutes: Double? = nil,
+         customSummary: String? = nil,
          customHeadline: String? = nil) {
         self.id = id
+        self.group = group
         self.label = label
         self.usedFraction = usedFraction
         self.remaining = remaining
         self.used = used
         self.resetsAt = resetsAt
-        self.windowMinutes = windowMinutes
+        self.duration = duration
+        self.windowMinutes = windowMinutes ?? duration.map { $0 / 60.0 }
         self.customSummary = customSummary
         self.customHeadline = customHeadline
     }
@@ -133,6 +145,8 @@ struct ProviderSnapshot: Identifiable, Equatable {
     /// first", and a window dropping out of the response silently promotes
     /// another one — the ring keeps its shape and quietly changes its subject.
     var headlineID: String?
+    /// Which window the weekly ring draws, when it is switched on.
+    var weeklyID: String? = nil
     /// Set when something is blocked right now. Deliberately separate from the
     /// windows: it is not a measurement, it is a door being shut.
     var block: UsageBlock?
@@ -208,6 +222,8 @@ struct ProviderSnapshot: Identifiable, Equatable {
         case "codex":      return "Sign in to Codex to read your usage"
         case "gemini":     return "Sign in to Antigravity to read your usage"
         case "glm":        return "Set up a GLM Coding Plan key for a coding tool to read your usage"
+        case "commandcode": return "Sign in with the Command Code app to read your usage"
+        case "opencode":   return "Set up an OpenCode credential to read your usage"
         default:           return "Sign in to \(displayName) to read your usage"
         }
     }

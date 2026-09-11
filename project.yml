@@ -12,30 +12,17 @@ settings:
     # Sources/Info.plist reads both from here — hardcoding them there instead
     # silently pins every build to one version. Bump CURRENT_PROJECT_VERSION
     # on every release.
-    MARKETING_VERSION: "1.4.0"
+    MARKETING_VERSION: "1.8.0"
     CURRENT_PROJECT_VERSION: "10"
 
+    CODE_SIGN_IDENTITY: "Developer ID Application"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: B4932KX535
+    CODE_SIGNING_REQUIRED: "YES"
+    CODE_SIGNING_ALLOWED: "YES"
+    ENABLE_HARDENED_RUNTIME: "YES"
     ENABLE_APP_SANDBOX: "NO"
     ENABLE_USER_SCRIPT_SANDBOXING: "NO"
-  configs:
-    Debug:
-      # Debug builds use local ad-hoc signing so anyone can clone, compile,
-      # and run the test suite without requiring an Apple Developer team certificate.
-      CODE_SIGN_IDENTITY: "-"
-      CODE_SIGN_STYLE: Automatic
-      CODE_SIGNING_REQUIRED: "NO"
-      CODE_SIGNING_ALLOWED: "YES"
-      ENABLE_HARDENED_RUNTIME: "NO"
-    Release:
-      # Signed with Developer ID for notarization and distribution. The app reads
-      # Claude Code's OAuth token out of the login keychain, and the keychain's
-      # ACL keys on this stable signing identity.
-      CODE_SIGN_IDENTITY: "Developer ID Application"
-      CODE_SIGN_STYLE: Manual
-      DEVELOPMENT_TEAM: B4932KX535
-      CODE_SIGNING_REQUIRED: "YES"
-      CODE_SIGNING_ALLOWED: "YES"
-      ENABLE_HARDENED_RUNTIME: "YES"
 
 targets:
   Codenotch:

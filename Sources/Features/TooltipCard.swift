@@ -202,7 +202,7 @@ private struct StatusRing: View {
             case .waiting:
                 // Half a ring, held still: blocked, not progressing.
                 ring(trim: 0.5)
-            case .idle:
+            case .success, .idle:
                 ring(trim: 1)
             }
         }
@@ -385,6 +385,7 @@ private struct SessionRow: View {
         switch session.state {
         case .busy:    return Palette.ample
         case .waiting: return Palette.watch
+        case .success: return Palette.ample
         case .idle:    return Palette.textSecondary
         }
     }
@@ -393,6 +394,7 @@ private struct SessionRow: View {
         switch session.state {
         case .busy:    return "working"
         case .waiting: return "waiting"
+        case .success: return "complete"
         case .idle:    return "idle"
         }
     }
@@ -433,7 +435,7 @@ private struct SessionList: View {
     private var ordered: [AgentSession] {
         summary.sessions.sorted { a, b in
             let rank: (AgentSession) -> Int = {
-                switch $0.state { case .waiting: 0; case .busy: 1; case .idle: 2 }
+                switch $0.state { case .waiting: 0; case .busy: 1; case .success: 2; case .idle: 3 }
             }
             return rank(a) == rank(b) ? a.since > b.since : rank(a) < rank(b)
         }

@@ -69,6 +69,11 @@ enum NotchLayout {
     static let activityDiameter = Design.px(72)
     static let activityStroke   = Design.px(5.5)
 
+    // The weekly ring.
+    static let weeklyRingStroke = Design.px(5)
+    static let weeklyInsideRadius = Design.px(28)
+    static let weeklyOutsideRadius = Design.px(65)
+
     // The settings orb: it lives *below* the notch, not inside it. At rest only
     // an arc of its edge is drawn, tucked into the corner the bottom flare
     // makes; on hover the same circle fills in and takes a gear. One circle,
